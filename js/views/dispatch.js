@@ -1,9 +1,10 @@
 import { $, esc } from '../utils/dom.js';
 import { fechaHora, fechaCorta, horasEntre, corta, soles } from '../utils/format.js';
 import { toast } from '../utils/toast.js';
-import { DB, guardar } from '../store.js';
+import { DB, guardar } from '../db/index.js';
 import { sesion } from '../state/sessionState.js';
 import { chipEstado, origenTexto, origenCorto, railHTML } from './presenters.js';
+import { adjuntosHTML, indicadorAdjuntos, refrescarAdjuntos } from './attachments.js';
 import { renderKpiSiVisible } from './kpi.js';
 // Import circular intencional: render.js también importa de este módulo.
 // Es seguro porque renderTodo solo se invoca desde manejadores de eventos
@@ -50,7 +51,8 @@ export function renderBandeja() {
   const filas = lista.map(s => {
     const bloqueado = s.estado === 'Concluido';
     return '<tr>'
-      + '<td><span class="tk">' + s.id + '</span><div class="small muted">' + fechaHora(s.creado).slice(0, 10) + '</div></td>'
+      + '<td><span class="tk">' + s.id + '</span>' + indicadorAdjuntos(s.id)
+      + '<div class="small muted">' + fechaHora(s.creado).slice(0, 10) + '</div></td>'
       + '<td class="cell-2">' + esc(corta(s.nombre, 22)) + '<span>' + esc(s.area) + '</span></td>'
       + '<td class="cell-2">' + s.tipo + '<span>' + esc(corta(s.servicio || '—', 24)) + '</span></td>'
       + '<td class="cell-2">' + esc(corta(s.destino, 38)) + '<span>Desde ' + esc(origenCorto(s)) + ' · ' + esc(s.contacto) + ' · ' + esc(s.telefono) + '</span></td>'
@@ -74,8 +76,8 @@ export function renderBandeja() {
 
 function accionesHTML(s) {
   let b = '';
-  if (s.estado === 'En espera') b += '<button class="btn btn-sm btn-cyan" onclick="avanzar(\'' + s.id + '\')">Pasar a tránsito</button> ';
-  if (s.estado === 'En tránsito') b += '<button class="btn btn-sm btn-green" onclick="avanzar(\'' + s.id + '\')">Finalizar</button> ';
+  if (s.estado === 'En espera') b += '<button class="btn btn-sm btn-info" onclick="avanzar(\'' + s.id + '\')">Pasar a tránsito</button> ';
+  if (s.estado === 'En tránsito') b += '<button class="btn btn-sm btn-ok" onclick="avanzar(\'' + s.id + '\')">Finalizar</button> ';
   b += '<button class="btn btn-sm btn-ghost" onclick="verDetalle(\'' + s.id + '\')">Gestionar</button>';
   return b;
 }
@@ -131,8 +133,8 @@ export function verDetalle(id) {
       + ' onchange="setCosto(\'' + s.id + '\',this.value);verDetalle(\'' + s.id + '\')"></div></div>'
       + '<div style="margin-top:14px">'
       + (s.estado === 'En espera'
-        ? '<button class="btn btn-sm btn-cyan" onclick="avanzar(\'' + s.id + '\');verDetalle(\'' + s.id + '\')">Pasar a en tránsito</button>'
-        : '<button class="btn btn-sm btn-green" onclick="avanzar(\'' + s.id + '\');verDetalle(\'' + s.id + '\')">Marcar como concluido</button>')
+        ? '<button class="btn btn-sm btn-info" onclick="avanzar(\'' + s.id + '\');verDetalle(\'' + s.id + '\')">Pasar a en tránsito</button>'
+        : '<button class="btn btn-sm btn-ok" onclick="avanzar(\'' + s.id + '\');verDetalle(\'' + s.id + '\')">Marcar como concluido</button>')
       + '</div></div>';
   }
   const html = gestion + railHTML(s)
@@ -153,8 +155,12 @@ export function verDetalle(id) {
     + '<dt>Costo</dt><dd>' + (s.costo != null ? soles(s.costo) : 'Sin tarifa') + '</dd>'
     + '<dt>Espera</dt><dd>' + (he != null ? he.toFixed(1) + ' h' : 'N/D') + '</dd>'
     + '<dt>Tránsito</dt><dd>' + (ht != null ? ht.toFixed(1) + ' h' : 'N/D') + '</dd>'
-    + '</dl>';
+    + '</dl>'
+    + adjuntosHTML(s.id, admin);
   abrirModal('Ticket ' + s.id, html);
+  // El índice de archivos puede haber cambiado en otra pestaña: se repinta
+  // el bloque de adjuntos en cuanto termine la lectura del almacenamiento.
+  refrescarAdjuntos(s.id, admin);
 }
 
 export function abrirModal(t, html) { $('modalTitle').textContent = t; $('modalBody').innerHTML = html; $('overlay').classList.add('on'); }

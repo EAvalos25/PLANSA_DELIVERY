@@ -1,6 +1,6 @@
 import { $, esc } from '../utils/dom.js';
 import { pad, isoDia, fechaCorta, soles, solesK, horasEntre, corta } from '../utils/format.js';
-import { DB } from '../store.js';
+import { DB } from '../db/index.js';
 import { origenCorto } from './presenters.js';
 
 /**
@@ -30,19 +30,19 @@ function columnas(dias) {
   const ancho = (W - pl * 2) / dias.length;
   const barra = Math.min(ancho - 4, 22);
   let g = '';
-  // guías horizontales
+  // guías horizontales (los colores salen de las variables CSS del tema activo)
   for (let i = 0; i <= 2; i++) {
     const y = (H - pb) - ((H - pb) * i / 2);
-    g += '<line x1="0" y1="' + y.toFixed(1) + '" x2="' + W + '" y2="' + y.toFixed(1) + '" stroke="#223142" stroke-width="1"/>';
+    g += '<line x1="0" y1="' + y.toFixed(1) + '" x2="' + W + '" y2="' + y.toFixed(1) + '" stroke="var(--chart-grid)" stroke-width="1"/>';
   }
   dias.forEach((d, i) => {
     const h = Math.max(2, (d.v / max) * (H - pb - 14));
     const x = pl + i * ancho + (ancho - barra) / 2;
     const y = (H - pb) - h;
-    g += '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + barra.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="3" fill="#F2A93B" opacity="' + (d.v ? 1 : .3) + '"><title>' + d.k + ': ' + d.v + ' servicios</title></rect>';
-    if (d.v) g += '<text x="' + (x + barra / 2).toFixed(1) + '" y="' + (y - 5).toFixed(1) + '" fill="#8FA3B8" font-size="10" font-family="ui-monospace,monospace" text-anchor="middle">' + d.v + '</text>';
+    g += '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + barra.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="3" fill="var(--chart-1)" opacity="' + (d.v ? 1 : .3) + '"><title>' + d.k + ': ' + d.v + ' servicios</title></rect>';
+    if (d.v) g += '<text x="' + (x + barra / 2).toFixed(1) + '" y="' + (y - 5).toFixed(1) + '" fill="var(--chart-value)" font-size="10" font-family="ui-monospace,monospace" text-anchor="middle">' + d.v + '</text>';
     if (i % 3 === 0 || i === dias.length - 1)
-      g += '<text x="' + (x + barra / 2).toFixed(1) + '" y="' + (H - 8) + '" fill="#647d96" font-size="10" font-family="ui-monospace,monospace" text-anchor="middle">' + d.k.slice(0, 5) + '</text>';
+      g += '<text x="' + (x + barra / 2).toFixed(1) + '" y="' + (H - 8) + '" fill="var(--chart-label)" font-size="10" font-family="ui-monospace,monospace" text-anchor="middle">' + d.k.slice(0, 5) + '</text>';
   });
   return '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="' + H + '" role="img" aria-label="Servicios por día">' + g + '</svg>';
 }
@@ -72,11 +72,11 @@ export function renderKpi() {
     : 'Últimos ' + filtroKpi + ' días · ' + fechaCorta(corte) + ' al ' + fechaCorta(new Date());
 
   $('kpiCards').innerHTML = [
-    { c: 'amber', v: lista.length, k: 'Viajes totales', d: diasSet.size + ' días con movimiento' },
-    { c: 'green', v: solesK(costoTotal), k: 'Costo valorizado', d: conCosto.length + ' de ' + lista.length + ' con tarifa cargada' },
+    { c: 'primary', v: lista.length, k: 'Viajes totales', d: diasSet.size + ' días con movimiento' },
+    { c: 'ok', v: solesK(costoTotal), k: 'Costo valorizado', d: conCosto.length + ' de ' + lista.length + ' con tarifa cargada' },
     { c: '', v: promDia.toFixed(1), k: 'Promedio de viajes al día', d: 'Sobre días con actividad' },
     { c: '', v: conCosto.length ? soles(costoTotal / conCosto.length) : 'N/D', k: 'Costo promedio por viaje', d: 'Solo servicios tarifados' },
-    { c: 'cyan', v: enCurso.length, k: 'En curso', d: lista.filter(s => s.estado === 'En espera').length + ' en espera · ' + lista.filter(s => s.estado === 'En tránsito').length + ' en tránsito' },
+    { c: 'info', v: enCurso.length, k: 'En curso', d: lista.filter(s => s.estado === 'En espera').length + ' en espera · ' + lista.filter(s => s.estado === 'En tránsito').length + ' en tránsito' },
     { c: '', v: promAtencion != null ? promAtencion.toFixed(1) + ' h' : 'N/D', k: 'Atención de punta a punta', d: 'Del registro al cierre' }
   ].map(x => '<div class="kpi ' + x.c + '"><div class="v">' + x.v + '</div><div class="k">' + x.k + '</div><div class="d">' + x.d + '</div></div>').join('');
 

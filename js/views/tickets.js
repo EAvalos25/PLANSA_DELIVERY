@@ -1,6 +1,6 @@
 import { $, esc } from '../utils/dom.js';
 import { pad } from '../utils/format.js';
-import { DB } from '../store.js';
+import { DB } from '../db/index.js';
 import { sesion } from '../state/sessionState.js';
 import { ticketHTML } from './presenters.js';
 

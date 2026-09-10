@@ -4,25 +4,52 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Plásticos Nacionales · Mensajería y Encargos</title>
+<!-- Script clásico y bloqueante: aplica el tema guardado antes del primer
+     pintado para que la página no parpadee. Ver js/ui/themeBoot.js -->
+<script src="js/ui/themeBoot.js"></script>
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
 
 <header class="topbar">
   <div class="brand">
-    <div class="brand-mark">PN</div>
+    <svg class="brand-logo" viewBox="0 0 110 100" role="img" aria-label="Logo de Plásticos Nacionales">
+      <defs>
+        <linearGradient id="pnArco" x1="10%" y1="95%" x2="90%" y2="5%">
+          <stop offset="0%" stop-color="#1B4E8E"/>
+          <stop offset="60%" stop-color="#17868B"/>
+          <stop offset="100%" stop-color="#2FA84F"/>
+        </linearGradient>
+      </defs>
+      <path d="M60.7 42.1 A26 26 0 1 0 63.9 78.7"
+            fill="none" stroke="url(#pnArco)" stroke-width="12.5" stroke-linecap="round"/>
+      <path d="M62 26 Q82 38 102 24"
+            fill="none" stroke="#1B4E8E" stroke-width="7.5" stroke-linecap="round"/>
+      <ellipse cx="82" cy="12" rx="18" ry="9.5" transform="rotate(-12 82 12)" fill="#2FA84F"/>
+    </svg>
     <div>
-      <div class="brand-name">Mensajería y encargos</div>
-      <div class="brand-sub">Plásticos Nacionales · Logística</div>
+      <div class="brand-name">Plásticos <em>Nacionales</em></div>
+      <div class="brand-sub">Mensajería y encargos · Logística</div>
     </div>
   </div>
   <div class="topbar-spacer"></div>
-  <div class="session" id="session" style="display:none">
-    <div>
-      <div class="session-name" id="sessName">—</div>
-      <div class="session-role" id="sessRole">—</div>
+  <div class="topbar-actions">
+    <button class="theme-toggle" id="themeToggle" onclick="alternarTema()" aria-label="Cambiar a modo oscuro" title="Cambiar a modo oscuro" aria-pressed="false">
+      <svg class="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="4"/>
+        <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+      </svg>
+      <svg class="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>
+      </svg>
+    </button>
+    <div class="session" id="session" style="display:none">
+      <div>
+        <div class="session-name" id="sessName">—</div>
+        <div class="session-role" id="sessRole">—</div>
+      </div>
+      <button class="btn-exit" onclick="salir()">Salir</button>
     </div>
-    <button class="btn-exit" onclick="salir()">Salir</button>
   </div>
 </header>
 
@@ -68,7 +95,7 @@
         </div>
         <button class="btn btn-ghost btn-wide" onclick="entrarAdmin()">Entrar como logística</button>
         <div class="hint" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line-soft)">
-          Clave de demostración: <code style="font-family:var(--mono);color:var(--amber)">logistica</code>. Cámbiala en la pestaña Padrón antes de usar la plataforma con datos reales.
+          Clave de demostración: <code style="font-family:var(--mono);color:var(--primary)">logistica</code>. Cámbiala en la pestaña Padrón antes de usar la plataforma con datos reales.
         </div>
       </section>
     </div>

@@ -2,7 +2,7 @@ import { $, marcar } from '../utils/dom.js';
 import { pad, hoyISO, isoDia } from '../utils/format.js';
 import { toast } from '../utils/toast.js';
 import { MARGEN_HORAS, SLOT_INI, SLOT_FIN } from '../config.js';
-import { DB, guardar } from '../store.js';
+import { DB, guardar } from '../db/index.js';
 import { sesion } from '../state/sessionState.js';
 import { renderMis } from './tickets.js';
 
@@ -56,7 +56,7 @@ export function refrescarHoras() {
   } else if (esHoy && isoDia(limite) !== fecha) {
     nota.innerHTML = 'Con el margen de ' + MARGEN_HORAS + ' horas la salida ya cae en el día siguiente. Programa el servicio para mañana.';
   } else if (esHoy) {
-    nota.innerHTML = 'Son las ' + pad(new Date().getHours(), 2) + ':' + pad(new Date().getMinutes(), 2) + '. Para hoy la primera hora que puedes pedir es las <b style="color:var(--amber)">' + hh + '</b>.';
+    nota.innerHTML = 'Son las ' + pad(new Date().getHours(), 2) + ':' + pad(new Date().getMinutes(), 2) + '. Para hoy la primera hora que puedes pedir es las <b style="color:var(--primary)">' + hh + '</b>.';
   } else {
     nota.textContent = 'Ventana operativa de mensajería: ' + pad(SLOT_INI, 2) + ':00 a ' + pad(SLOT_FIN, 2) + ':00.';
   }

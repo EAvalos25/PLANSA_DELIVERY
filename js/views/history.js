@@ -1,7 +1,7 @@
 import { $, esc } from '../utils/dom.js';
 import { fechaCorta, horasEntre, corta, hoyISO } from '../utils/format.js';
 import { toast } from '../utils/toast.js';
-import { DB } from '../store.js';
+import { DB } from '../db/index.js';
 import { chipEstado, origenCorto } from './presenters.js';
 
 /**

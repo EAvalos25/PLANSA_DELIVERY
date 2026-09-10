@@ -4,7 +4,7 @@ import { renderHistorico } from './views/history.js';
 import { renderPadron } from './views/roster.js';
 import { renderKpiSiVisible } from './views/kpi.js';
 import { renderMis } from './views/tickets.js';
-import { sincronizar as sincronizarStore } from './store.js';
+import { sincronizar as sincronizarStore } from './db/index.js';
 
 /**
  * Orquestador de render: vuelve a pintar todo lo que corresponde a la

@@ -1,7 +1,7 @@
 import { $ } from './utils/dom.js';
 import { hoyISO } from './utils/format.js';
 import { toast } from './utils/toast.js';
-import { DB, guardar } from './store.js';
+import { DB, guardar } from './db/index.js';
 import { setSesion, sesion } from './state/sessionState.js';
 import { buscarPersona } from './views/roster.js';
 import { tabUser, tabAdmin } from './views/tabs.js';

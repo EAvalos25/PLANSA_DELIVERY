@@ -1,5 +1,6 @@
 import { esc } from '../utils/dom.js';
 import { fechaHora, fechaCorta, soles, corta } from '../utils/format.js';
+import { adjuntosResumenHTML } from './attachments.js';
 
 /**
  * Helpers de presentación (generación de HTML) compartidos por las vistas
@@ -51,5 +52,7 @@ export function ticketHTML(s) {
     + '<div class="fact mono">Contacto <b>' + esc(s.telefono) + '</b></div>'
     + '<div class="fact">Transporte <b>' + (s.vehiculo || 'por asignar') + '</b></div>'
     + '<div class="fact mono">Costo <b>' + (s.costo != null ? soles(s.costo) : 'por asignar') + '</b></div>'
-    + '</div></article>';
+    + '</div>'
+    + adjuntosResumenHTML(s.id)
+    + '</article>';
 }

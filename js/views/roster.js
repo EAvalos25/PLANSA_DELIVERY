@@ -1,7 +1,7 @@
 import { $, esc } from '../utils/dom.js';
 import { fechaHora } from '../utils/format.js';
 import { toast } from '../utils/toast.js';
-import { DB, guardar } from '../store.js';
+import { DB, guardar } from '../db/index.js';
 
 /**
  * Padrón de personal habilitado y autorizaciones pendientes de acceso.
