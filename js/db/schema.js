@@ -6,18 +6,18 @@
  * el caso correspondiente en `migrar()`.
  *
  * @typedef {Object} Persona
- * @property {string} dni      8 dígitos
+ * @property {string} dni      8 dígitos (9 si es carné de extranjería)
  * @property {string} nombre
+ * @property {string} cargo
  * @property {string} area
- * @property {string} sede
  *
  * @typedef {Object} Solicitud
  * @property {string} id             correlativo "REQ-001"
  * @property {string} creado         ISO
- * @property {string} dni            DNI del solicitante
+ * @property {string} dni            DNI del solicitante ('' si no está en el padrón)
  * @property {string} nombre
+ * @property {string} cargo
  * @property {string} area
- * @property {string} sedeUsuario
  * @property {'Recoger'|'Entregar'} tipo
  * @property {string} servicio
  * @property {string} motivo
@@ -34,7 +34,7 @@
  * @property {?string} tsEspera      ISO
  * @property {?string} tsTransito    ISO
  * @property {?string} tsConcluido   ISO
- * @property {boolean} demo
+ * @property {'app'|'historico'} fuente   registrada en la app / cargada de la planilla 2026
  *
  * @typedef {Object} Autorizacion
  * @property {string} dni
@@ -53,7 +53,14 @@
  * guardan aparte, en la capa `js/storage/`, referenciados por `ticketId`.
  */
 
-export const VERSION = 2;
+import { pad } from '../utils/format.js';
+import { padronInicial, normalizarDoc } from './padron.js';
+import { historico2026 } from './historico.js';
+
+export const VERSION = 5;
+
+/** Clave con la que entra el área de logística mientras no se cambie. */
+export const PIN_POR_DEFECTO = 'logistica';
 
 /** Comprueba que lo recuperado del almacenamiento tenga forma de base válida. */
 export function esValida(db) {
@@ -71,7 +78,42 @@ export function migrar(db) {
   if (typeof db.correlativo !== 'number') {
     db.correlativo = db.solicitudes.length;
   }
-  if (typeof db.pin !== 'string' || !db.pin) db.pin = 'logistica';
+  if (typeof db.pin !== 'string' || !db.pin) db.pin = PIN_POR_DEFECTO;
+
+  // v3: entra el padrón real de RR.HH. y reemplaza al de demostración. Las
+  // altas que logística haya agregado a mano se conservan.
+  if (!(db.version >= 3)) {
+    const oficial = padronInicial();
+    const oficiales = new Set(oficial.map(p => p.dni));
+    const agregados = db.personal.filter(p => p.origen === 'manual' && !oficiales.has(p.dni));
+    db.personal = oficial.concat(agregados);
+  }
+
+  // v4: el padrón deja de llevar sede; la sede de salida se elige en cada
+  // solicitud, no se hereda de la persona.
+  if (!(db.version >= 4)) db.personal.forEach(p => { delete p.sede; });
+
+  // v5: salen las solicitudes de demostración y entra el histórico real de
+  // 2026. Lo que se registró desde la aplicación se conserva y se renumera
+  // detrás del histórico, porque los correlativos antiguos chocan con él.
+  if (!(db.version >= 5)) {
+    const propias = db.solicitudes.filter(s => s.demo === false || s.fuente === 'app');
+    const hist = historico2026();
+    propias.forEach((s, i) => { s.id = 'REQ-' + pad(hist.length + i + 1); });
+    db.solicitudes = hist.concat(propias);
+    db.correlativo = db.solicitudes.length;
+  }
+  db.solicitudes.forEach(s => {
+    if (!s.fuente) s.fuente = 'app';
+    delete s.demo;
+    delete s.sedeUsuario;
+  });
+
+  // Los documentos guardados con 7 dígitos (cero inicial recortado en origen)
+  // se completan a 8 para que el ingreso por DNI los encuentre.
+  db.personal.forEach(p => { p.dni = normalizarDoc(p.dni); });
+  db.autorizaciones.forEach(a => { a.dni = normalizarDoc(a.dni); });
+
   db.version = VERSION;
   return db;
 }

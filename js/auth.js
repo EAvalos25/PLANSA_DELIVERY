@@ -4,6 +4,7 @@ import { toast } from './utils/toast.js';
 import { DB, guardar } from './db/index.js';
 import { setSesion, sesion } from './state/sessionState.js';
 import { buscarPersona } from './views/roster.js';
+import { normalizarDoc, DOC_VALIDO } from './db/padron.js';
 import { tabUser, tabAdmin } from './views/tabs.js';
 import { toggleOrigen, refrescarHoras, resetAccion } from './views/requestForm.js';
 import { renderMis } from './views/tickets.js';
@@ -14,14 +15,17 @@ import { renderTodo } from './render.js';
  * autorización y apertura/cierre de las vistas principales.
  */
 export function entrarSolicitante() {
-  const dni = ($('dniInput').value || '').replace(/\D/g, '');
+  // El documento se normaliza antes de validar: quien tenga el DNI con 7
+  // dígitos (porque el sistema de RR.HH. recortó el cero inicial) entra
+  // igual, lo escriba con cero o sin él.
+  const dni = normalizarDoc($('dniInput').value);
   const box = $('loginAlert');
   box.classList.remove('on', 'ok');
   $('loginAlertActions').style.display = 'none';
 
-  if (dni.length !== 8) {
-    $('loginAlertTitle').textContent = 'DNI incompleto';
-    $('loginAlertMsg').textContent = 'El documento debe tener 8 dígitos numéricos.';
+  if (!DOC_VALIDO.test(dni)) {
+    $('loginAlertTitle').textContent = 'Documento incompleto';
+    $('loginAlertMsg').textContent = 'Escribe los 8 dígitos de tu DNI (9 si usas carné de extranjería).';
     box.classList.add('on');
     return;
   }
@@ -33,14 +37,14 @@ export function entrarSolicitante() {
     box.classList.add('on');
     return;
   }
-  setSesion({ tipo: 'user', dni: p.dni, nombre: p.nombre, area: p.area, sede: p.sede });
+  setSesion({ tipo: 'user', dni: p.dni, nombre: p.nombre, cargo: p.cargo, area: p.area });
   abrirVista('user');
 }
 
 export function pedirAutorizacion() {
-  const dni = ($('dniInput').value || '').replace(/\D/g, '');
-  if (dni.length !== 8) return;
-  if (DB.autorizaciones.some(a => a.dni === dni && a.estado === 'Pendiente')) {
+  const dni = normalizarDoc($('dniInput').value);
+  if (!DOC_VALIDO.test(dni)) return;
+  if (DB.autorizaciones.some(a => normalizarDoc(a.dni) === dni && a.estado === 'Pendiente')) {
     toast('Ya hay un pedido en curso', 'Logística revisará el DNI ' + dni + '.', 'warn');
     return;
   }
@@ -88,7 +92,8 @@ function abrirVista(tipo) {
     $('miNombre').textContent = sesion.nombre;
     $('miDni').textContent = sesion.dni;
     $('miArea').textContent = sesion.area;
-    $('fOrigen').value = sesion.sede;
+    $('miCargo').textContent = sesion.cargo || '—';
+    $('fOrigen').value = '';
     toggleOrigen();
     resetAccion();
     $('resTicket').innerHTML = ''; $('qTicket').value = ''; $('eTicket').classList.remove('on');

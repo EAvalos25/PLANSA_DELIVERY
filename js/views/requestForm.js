@@ -1,5 +1,5 @@
 import { $, marcar } from '../utils/dom.js';
-import { pad, hoyISO, isoDia } from '../utils/format.js';
+import { pad, hoyISO, isoDia, numeroTicket } from '../utils/format.js';
 import { toast } from '../utils/toast.js';
 import { MARGEN_HORAS, SLOT_INI, SLOT_FIN } from '../config.js';
 import { DB, guardar } from '../db/index.js';
@@ -122,14 +122,14 @@ export function enviarSolicitud() {
   const s = {
     id: 'REQ-' + pad(DB.correlativo),
     creado: new Date().toISOString(),
-    dni: sesion.dni, nombre: sesion.nombre, area: sesion.area, sedeUsuario: sesion.sede,
+    dni: sesion.dni, nombre: sesion.nombre, cargo: sesion.cargo, area: sesion.area,
     tipo: accionSel, servicio, motivo, origen, origenDetalle: origen === 'Otros' ? otro : '',
     destino: dest, contacto: cont, telefono: tel,
     fechaProg: fecha, horaProg: hora,
     vehiculo: null, costo: null,
     estado: 'En espera',
     tsEspera: new Date().toISOString(), tsTransito: null, tsConcluido: null,
-    demo: false
+    fuente: 'app'
   };
   DB.solicitudes.push(s);
   guardar();
@@ -143,8 +143,8 @@ export function enviarSolicitud() {
   resetAccion();
   $('fAccion').classList.remove('bad');
   document.querySelectorAll('.err').forEach(e => e.classList.remove('on'));
-  $('qTicket').value = s.id;
-  $('fOrigen').value = sesion.sede; toggleOrigen();
+  $('qTicket').value = numeroTicket(s.id);
+  $('fOrigen').value = ''; toggleOrigen();
   refrescarHoras();
   renderMis();
   window.scrollTo({ top: 0, behavior: 'smooth' });

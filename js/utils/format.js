@@ -3,6 +3,9 @@
  */
 export const pad = (n, l = 3) => String(n).padStart(l, '0');
 
+/** Solo el número de un correlativo: 'REQ-007' -> '007'. */
+export const numeroTicket = id => String(id || '').replace(/^REQ-/i, '');
+
 export const soles = n => 'S/ ' + (Number(n) || 0).toLocaleString('es-PE', {
   minimumFractionDigits: 2, maximumFractionDigits: 2
 });

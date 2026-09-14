@@ -18,10 +18,11 @@ npx serve .
 
 Luego visita `http://localhost:8080`.
 
-- **Acceso solicitante:** ingresa con un DNI del padrón de demostración
-  (ver `js/db/seed.js`), por ejemplo `41250873`.
-- **Acceso logística:** clave de demostración `logistica` (cámbiala desde
-  la pestaña *Padrón y accesos* antes de usar datos reales).
+- **Acceso solicitante:** ingresa con un DNI del padrón de RR.HH.
+  (ver `js/db/padron.js`), por ejemplo `73012556`.
+- **Acceso logística:** la clave inicial es `logistica`. No se muestra en
+  ninguna pantalla: para cambiarla hay que entrar con ella y usar la pestaña
+  *Padrón y accesos*.
 
 ## Apariencia
 
@@ -50,7 +51,10 @@ js/
   db/                        ← BASE DE DATOS
     index.js                  API: DB, cargar(), guardar(), sincronizar()
     schema.js                 Forma de cada colección + versión + migraciones
-    seed.js                   Datos de demostración
+    padron.js                 Padrón real de RR.HH. + normalización del documento
+    destinos.js               Destinos frecuentes unificados + tarifa de referencia
+    historico.js              Los 1 386 servicios de 2026 con su costo
+    seed.js                   Estado inicial: padrón + histórico, sin datos inventados
     adapters/
       localStorageAdapter.js   Implementación actual + contrato para migrar a nube
   storage/                   ← ARCHIVOS (guías de entrega)
@@ -137,9 +141,49 @@ dependencia de `window.*`, aunque no hace falta para que la app funcione.
 
 ## Datos y producción
 
-- El padrón de personal (`js/db/seed.js`) es ficticio. Reemplázalo por el
-  listado real de RR.HH. antes de poner la plataforma en producción.
-- La clave de logística de demostración es `logistica`. Cámbiala desde la
-  pestaña *Padrón y accesos*.
+- El padrón (`js/db/padron.js`) son las 212 personas del listado de RR.HH.
+  Para actualizarlo, reemplaza esa lista y **sube `VERSION` en
+  `js/db/schema.js`**: así las bases ya guardadas en los navegadores adoptan
+  el padrón nuevo en el siguiente ingreso. Las altas hechas a mano desde la
+  pestaña *Padrón y accesos* (marcadas con `origen: 'manual'`) sobreviven.
+- **Documento de identidad.** Se guarda siempre en forma canónica: los DNI de
+  7 dígitos (el sistema de RR.HH. recorta el cero inicial) se completan a 8,
+  así la persona entra escriba `8161848` o `08161848`. Los documentos de
+  9 dígitos son carnés de extranjería y se respetan tal cual.
+- **El padrón no se lista en pantalla.** Son datos personales de todo el
+  personal: la tabla de *Padrón y accesos* aparece vacía y solo muestra las
+  fichas que logística busca por documento, apellido o nombre. La búsqueda
+  ignora tildes y admite las palabras en cualquier orden.
+- **Sede.** No se guarda por persona. La sede de salida se elige en cada
+  solicitud, que es donde realmente cambia.
+- **Nada de datos inventados.** La base arranca con el padrón de RR.HH. y con
+  los **1 386 servicios reales de 2026** (`js/db/historico.js`, del 15/01 al
+  19/08, S/ 30 264,60). Entran como concluidos, así que los indicadores abren
+  con el gasto real del año y la bandeja de despacho abre vacía, que es lo
+  correcto: no hay nada pendiente hasta que alguien registre una solicitud.
+- **Lo que la planilla no registra se deja vacío**, no se rellena: hora
+  programada, vehículo, persona que recibe, teléfono y los tiempos del flujo.
+  Por eso los paneles de *Reparto por vehículo* y *Tiempos del flujo* empiezan
+  sin datos y se van llenando con los tickets que sí pasen por la aplicación.
+  Cada servicio lleva `fuente` (`historico` o `app`), visible en el detalle y
+  en el CSV.
+- **Destinos** (`js/db/destinos.js`). Salen del mismo histórico. El mismo sitio
+  aparecía escrito de muchas formas —erratas, tildes ausentes, la dirección con
+  y sin número—, así que las redacciones se agruparon por parecido y quedó una
+  por lugar, con el nombre corregido a mano. Dos sedes de una misma empresa
+  siguen siendo dos destinos. Se ofrecen como sugerencia al escribir el
+  destino; el campo sigue aceptando texto libre.
+- **Tarifa de referencia.** Cada destino frecuente guarda lo que más veces se
+  pagó por ir allí (la moda, que es el precio de lista) y el rango real. Al
+  asignar la tarifa, logística ve esa referencia y puede aplicarla de un clic.
+- Los dos CSV de origen son el mismo conjunto de viajes: `data_valorizado.csv`
+  es `data_destinos.csv` con fecha, costo y solicitante, así que es el único
+  que se usa para generar los módulos.
+- **Correlativo.** Lo genera la app (`REQ-001`, `REQ-002`…). En *Seguimiento*
+  el prefijo `REQ-` es fijo en pantalla y el solicitante teclea solo el número.
+- Lo único ficticio que queda son las solicitudes con las que abre la bandeja
+  (`js/db/seed.js`), todas marcadas con `demo: true`.
+- La clave inicial de logística es `logistica` y ya no aparece escrita en la
+  interfaz. Cámbiala desde la pestaña *Padrón y accesos*.
 - No incluye IGV, arancel, percepción ni otros impuestos: es un registro
   operativo interno.

@@ -1,5 +1,5 @@
 import * as adaptador from './adapters/localStorageAdapter.js';
-import { esValida, migrar } from './schema.js';
+import { esValida, migrar, VERSION } from './schema.js';
 import { semilla } from './seed.js';
 
 /**
@@ -18,23 +18,31 @@ import { semilla } from './seed.js';
 /** Base de datos en memoria de la sesión actual. Se reasigna en cargar()/sincronizar(). */
 export let DB = null;
 
-// Última copia serializada conocida, para detectar cambios hechos en otra pestaña.
-let ultimaCopia = '';
+// Revisión del último guardado propio, para distinguir lo que escribimos
+// nosotros de lo que escribió otra pestaña.
+let ultimaRevision = null;
 
 /** Persiste DB y actualiza el testigo de sincronización. */
 export function guardar() {
-  const texto = JSON.stringify(DB);
-  ultimaCopia = texto;
-  adaptador.escribir(texto);
+  adaptador.escribir(JSON.stringify(DB));
+  ultimaRevision = adaptador.revision();
 }
 
-/** Carga DB desde el almacenamiento, o genera la semilla de demostración. */
+/** Carga DB desde el almacenamiento, o arma el estado inicial (ver seed.js). */
 export async function cargar() {
   const crudo = await adaptador.leer();
   if (crudo) {
     try {
       const datos = JSON.parse(crudo);
-      if (esValida(datos)) { DB = migrar(datos); ultimaCopia = crudo; return; }
+      if (esValida(datos)) {
+        const versionGuardada = datos.version;
+        DB = migrar(datos);
+        ultimaRevision = adaptador.revision();
+        // Si la base venía de una versión anterior, se deja ya migrada en el
+        // almacenamiento; si no, cada carga repetiría el mismo trabajo.
+        if (versionGuardada !== VERSION) guardar();
+        return;
+      }
     } catch (e) { /* datos ilegibles: se regenera la semilla */ }
   }
   DB = migrar(semilla());
@@ -49,14 +57,18 @@ export async function cargar() {
  * (onSnapshot / realtime) en lugar de sondeo.
  */
 export function sincronizar(onCambio) {
+  // Primero el testigo: son unos bytes. La base entera (cientos de KB con el
+  // histórico cargado) solo se lee y se parsea cuando de verdad cambió.
+  const rev = adaptador.revision();
+  if (rev == null || rev === ultimaRevision) return;
+
   const crudo = adaptador.leerSincrono();
-  if (crudo && crudo !== ultimaCopia) {
-    try {
-      const datos = JSON.parse(crudo);
-      if (!esValida(datos)) return;
-      DB = migrar(datos);
-      ultimaCopia = crudo;
-      onCambio();
-    } catch (e) { /* se ignora un guardado parcial */ }
-  }
+  if (!crudo) return;
+  try {
+    const datos = JSON.parse(crudo);
+    if (!esValida(datos)) return;
+    DB = migrar(datos);
+    ultimaRevision = rev;
+    onCambio();
+  } catch (e) { /* se ignora un guardado parcial */ }
 }

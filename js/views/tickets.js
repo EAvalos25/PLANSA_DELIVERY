@@ -1,5 +1,5 @@
 import { $, esc } from '../utils/dom.js';
-import { pad } from '../utils/format.js';
+import { pad, numeroTicket } from '../utils/format.js';
 import { DB } from '../db/index.js';
 import { sesion } from '../state/sessionState.js';
 import { ticketHTML } from './presenters.js';
@@ -8,17 +8,24 @@ import { ticketHTML } from './presenters.js';
  * Vista del solicitante: consulta de un ticket puntual y listado de "mis servicios".
  */
 export function consultarTicket() {
-  const v = ($('qTicket').value || '').trim().toUpperCase();
-  const id = /^\d+$/.test(v) ? 'REQ-' + pad(parseInt(v, 10)) : v;
+  // El campo solo recibe números: el prefijo REQ- lo pone la interfaz.
+  const n = ($('qTicket').value || '').replace(/[^0-9]/g, '');
+  if (!n) {
+    $('eTicket').textContent = 'Escribe el número de tu ticket.';
+    $('eTicket').classList.add('on');
+    $('resTicket').innerHTML = '';
+    return;
+  }
+  const id = 'REQ-' + pad(parseInt(n, 10));
   const s = DB.solicitudes.find(x => x.id === id && x.dni === sesion.dni);
   if (!s) {
-    $('eTicket').textContent = v ? 'No encontramos el correlativo ' + esc(id) + ' entre tus servicios.' : 'Escribe el número correlativo de tu ticket.';
+    $('eTicket').textContent = 'No encontramos el ticket ' + esc(id) + ' entre tus servicios.';
     $('eTicket').classList.add('on');
     $('resTicket').innerHTML = '';
     return;
   }
   $('eTicket').classList.remove('on');
-  $('qTicket').value = s.id;
+  $('qTicket').value = numeroTicket(s.id);
   $('resTicket').innerHTML = ticketHTML(s);
 }
 

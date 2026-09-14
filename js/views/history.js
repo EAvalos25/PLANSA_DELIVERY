@@ -6,15 +6,16 @@ import { chipEstado, origenCorto } from './presenters.js';
 
 /**
  * Histórico de servicios: tabla filtrable de una fila por servicio y
- * exportación a CSV (23 columnas planas, listo para Power BI / Looker Studio).
+ * exportación a CSV (24 columnas planas, listo para Power BI / Looker Studio).
  */
 const COLUMNAS = [
   ['ticket', s => s.id],
+  ['fuente', s => s.fuente === 'historico' ? 'planilla_2026' : 'app'],
   ['fecha_registro', s => s.creado.slice(0, 10)],
   ['dni_solicitante', s => s.dni],
   ['solicitante', s => s.nombre],
   ['area', s => s.area],
-  ['sede_solicitante', s => s.sedeUsuario || ''],
+  ['cargo', s => s.cargo || ''],
   ['accion', s => s.tipo],
   ['tipo_servicio', s => s.servicio || ''],
   ['motivo', s => s.motivo],

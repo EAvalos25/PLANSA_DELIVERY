@@ -7,6 +7,12 @@ import { adjuntosResumenHTML } from './attachments.js';
  * de seguimiento, bandeja, histórico e indicadores.
  */
 
+/**
+ * Texto de un campo que puede venir vacío. El histórico de 2026 no registraba
+ * hora, contacto ni teléfono: se muestra un guion en vez de un hueco.
+ */
+export const oGuion = v => String(v == null ? '' : v).trim() || '—';
+
 export function chipEstado(e, paraUsuario) {
   const map = { 'En espera': 'st-espera', 'En tránsito': 'st-transito', 'Concluido': 'st-concluido' };
   const txt = (paraUsuario && e === 'Concluido') ? 'Terminado' : e;
@@ -46,10 +52,10 @@ export function ticketHTML(s) {
     + '<div class="route-body"><div><span>Origen</span><b>' + esc(origenTexto(s)) + '</b></div>'
     + '<div><span>Destino</span><b>' + esc(s.destino) + '</b></div></div></div>'
     + '<div class="ticket-facts">'
-    + '<div class="fact">Programado <b>' + fechaCorta(s.fechaProg) + ' · ' + s.horaProg + '</b></div>'
-    + '<div class="fact">Motivo <b>' + esc(corta(s.motivo, 44)) + '</b></div>'
-    + '<div class="fact">Recibe <b>' + esc(s.contacto) + '</b></div>'
-    + '<div class="fact mono">Contacto <b>' + esc(s.telefono) + '</b></div>'
+    + '<div class="fact">Programado <b>' + fechaCorta(s.fechaProg) + ' · ' + esc(oGuion(s.horaProg)) + '</b></div>'
+    + '<div class="fact">Motivo <b>' + esc(oGuion(corta(s.motivo, 44))) + '</b></div>'
+    + '<div class="fact">Recibe <b>' + esc(oGuion(s.contacto)) + '</b></div>'
+    + '<div class="fact mono">Contacto <b>' + esc(oGuion(s.telefono)) + '</b></div>'
     + '<div class="fact">Transporte <b>' + (s.vehiculo || 'por asignar') + '</b></div>'
     + '<div class="fact mono">Costo <b>' + (s.costo != null ? soles(s.costo) : 'por asignar') + '</b></div>'
     + '</div>'

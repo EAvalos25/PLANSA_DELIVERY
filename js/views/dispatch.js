@@ -3,7 +3,8 @@ import { fechaHora, fechaCorta, horasEntre, corta, soles } from '../utils/format
 import { toast } from '../utils/toast.js';
 import { DB, guardar } from '../db/index.js';
 import { sesion } from '../state/sessionState.js';
-import { chipEstado, origenTexto, origenCorto, railHTML } from './presenters.js';
+import { chipEstado, origenTexto, origenCorto, railHTML, oGuion } from './presenters.js';
+import { tarifaDe } from '../db/destinos.js';
 import { adjuntosHTML, indicadorAdjuntos, refrescarAdjuntos } from './attachments.js';
 import { renderKpiSiVisible } from './kpi.js';
 // Import circular intencional: render.js también importa de este módulo.
@@ -50,18 +51,22 @@ export function renderBandeja() {
 
   const filas = lista.map(s => {
     const bloqueado = s.estado === 'Concluido';
+    const ref = tarifaDe(s.destino);
     return '<tr>'
       + '<td><span class="tk">' + s.id + '</span>' + indicadorAdjuntos(s.id)
       + '<div class="small muted">' + fechaHora(s.creado).slice(0, 10) + '</div></td>'
       + '<td class="cell-2">' + esc(corta(s.nombre, 22)) + '<span>' + esc(s.area) + '</span></td>'
       + '<td class="cell-2">' + s.tipo + '<span>' + esc(corta(s.servicio || '—', 24)) + '</span></td>'
-      + '<td class="cell-2">' + esc(corta(s.destino, 38)) + '<span>Desde ' + esc(origenCorto(s)) + ' · ' + esc(s.contacto) + ' · ' + esc(s.telefono) + '</span></td>'
-      + '<td class="nowrap">' + fechaCorta(s.fechaProg) + '<div class="small muted">' + s.horaProg + '</div></td>'
+      + '<td class="cell-2">' + esc(corta(s.destino, 38)) + '<span>Desde ' + esc(origenCorto(s)) + ' · ' + esc(oGuion(s.contacto)) + ' · ' + esc(oGuion(s.telefono)) + '</span></td>'
+      + '<td class="nowrap">' + fechaCorta(s.fechaProg) + '<div class="small muted">' + esc(oGuion(s.horaProg)) + '</div></td>'
       + '<td><select class="mini-select" ' + (bloqueado ? 'disabled' : '') + ' onchange="setVehiculo(\'' + s.id + '\',this.value)">'
       + '<option value=""' + (!s.vehiculo ? ' selected' : '') + '>Sin asignar</option>'
       + '<option' + (s.vehiculo === 'Motorizado' ? ' selected' : '') + '>Motorizado</option>'
       + '<option' + (s.vehiculo === 'Carro' ? ' selected' : '') + '>Carro</option></select></td>'
-      + '<td><input class="mini-input" type="number" min="0" step="0.5" placeholder="0.00" ' + (bloqueado ? 'disabled' : '')
+      + '<td><input class="mini-input" type="number" min="0" step="0.5"'
+      + ' placeholder="' + (ref ? ref.tarifa.toFixed(2) : '0.00') + '"'
+      + (ref ? ' title="Tarifa habitual de este destino: ' + soles(ref.tarifa) + ' en ' + ref.viajes + ' viajes de 2026"' : '')
+      + (bloqueado ? ' disabled' : '')
       + ' value="' + (s.costo != null ? s.costo : '') + '" onchange="setCosto(\'' + s.id + '\',this.value)"></td>'
       + '<td>' + chipEstado(s.estado) + '</td>'
       + '<td class="nowrap">' + accionesHTML(s) + '</td>'
@@ -119,6 +124,13 @@ export function verDetalle(id) {
   const he = horasEntre(s.tsEspera, s.tsTransito);
   const ht = horasEntre(s.tsTransito, s.tsConcluido);
   const admin = sesion && sesion.tipo === 'admin';
+  const ref = tarifaDe(s.destino);
+  // Lo que se pagó históricamente por ir a ese destino, para no tarifar a ciegas.
+  const referencia = ref
+    ? '<div class="hint" style="margin-top:10px">Tarifa habitual de este destino: <b>' + soles(ref.tarifa) + '</b>'
+      + ' · ' + ref.viajes + ' viajes en 2026, entre ' + soles(ref.min) + ' y ' + soles(ref.max) + '. '
+      + '<button class="btn btn-sm btn-ghost" onclick="setCosto(\'' + s.id + '\',' + ref.tarifa + ');verDetalle(\'' + s.id + '\')">Aplicar</button></div>'
+    : '<div class="hint" style="margin-top:10px">Destino sin historial de tarifas: no está entre los habituales de 2026.</div>';
   let gestion = '';
   if (admin && s.estado !== 'Concluido') {
     const sel = v => (s.vehiculo === v ? ' selected' : '');
@@ -131,6 +143,7 @@ export function verDetalle(id) {
       + '<div class="field" style="margin:0"><label>Tarifa del servicio (S/)</label>'
       + '<input class="input" type="number" min="0" step="0.5" placeholder="0.00" value="' + (s.costo != null ? s.costo : '') + '"'
       + ' onchange="setCosto(\'' + s.id + '\',this.value);verDetalle(\'' + s.id + '\')"></div></div>'
+      + referencia
       + '<div style="margin-top:14px">'
       + (s.estado === 'En espera'
         ? '<button class="btn btn-sm btn-info" onclick="avanzar(\'' + s.id + '\');verDetalle(\'' + s.id + '\')">Pasar a en tránsito</button>'
@@ -140,14 +153,14 @@ export function verDetalle(id) {
   const html = gestion + railHTML(s)
     + '<dl class="detail-grid">'
     + '<dt>Estado</dt><dd>' + chipEstado(s.estado) + '</dd>'
-    + '<dt>Solicitante</dt><dd>' + esc(s.nombre) + ' · DNI ' + esc(s.dni) + '<br><span class="muted small">' + esc(s.area) + '</span></dd>'
+    + '<dt>Solicitante</dt><dd>' + esc(s.nombre) + (s.dni ? ' · DNI ' + esc(s.dni) : '') + '<br><span class="muted small">' + esc(oGuion(s.area)) + '</span></dd>'
     + '<dt>Acción</dt><dd>' + s.tipo + '</dd>'
     + '<dt>Tipo de servicio</dt><dd>' + esc(s.servicio || 'N/D') + '</dd>'
-    + '<dt>Motivo</dt><dd>' + esc(s.motivo) + '</dd>'
+    + '<dt>Motivo</dt><dd>' + esc(oGuion(s.motivo)) + '</dd>'
     + '<dt>Origen</dt><dd>' + esc(origenTexto(s)) + '</dd>'
     + '<dt>Destino</dt><dd>' + esc(s.destino) + '</dd>'
-    + '<dt>Recibe</dt><dd>' + esc(s.contacto) + ' · ' + esc(s.telefono) + '</dd>'
-    + '<dt>Programado</dt><dd>' + fechaCorta(s.fechaProg) + ' a las ' + s.horaProg + '</dd>'
+    + '<dt>Recibe</dt><dd>' + esc(oGuion(s.contacto)) + ' · ' + esc(oGuion(s.telefono)) + '</dd>'
+    + '<dt>Programado</dt><dd>' + fechaCorta(s.fechaProg) + (s.horaProg ? ' a las ' + s.horaProg : '') + '</dd>'
     + '<dt>Registrado</dt><dd>' + fechaHora(s.creado) + '</dd>'
     + '<dt>Salida</dt><dd>' + fechaHora(s.tsTransito) + '</dd>'
     + '<dt>Cierre</dt><dd>' + fechaHora(s.tsConcluido) + '</dd>'
@@ -155,6 +168,9 @@ export function verDetalle(id) {
     + '<dt>Costo</dt><dd>' + (s.costo != null ? soles(s.costo) : 'Sin tarifa') + '</dd>'
     + '<dt>Espera</dt><dd>' + (he != null ? he.toFixed(1) + ' h' : 'N/D') + '</dd>'
     + '<dt>Tránsito</dt><dd>' + (ht != null ? ht.toFixed(1) + ' h' : 'N/D') + '</dd>'
+    + '<dt>Origen del dato</dt><dd>' + (s.fuente === 'historico'
+        ? 'Planilla de logística 2026 <span class="muted small">(solo consta el día del servicio)</span>'
+        : 'Registrado en la aplicación') + '</dd>'
     + '</dl>'
     + adjuntosHTML(s.id, admin);
   abrirModal('Ticket ' + s.id, html);

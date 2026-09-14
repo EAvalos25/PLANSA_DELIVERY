@@ -13,20 +13,6 @@
 
 <header class="topbar">
   <div class="brand">
-    <svg class="brand-logo" viewBox="0 0 110 100" role="img" aria-label="Logo de Plásticos Nacionales">
-      <defs>
-        <linearGradient id="pnArco" x1="10%" y1="95%" x2="90%" y2="5%">
-          <stop offset="0%" stop-color="#1B4E8E"/>
-          <stop offset="60%" stop-color="#17868B"/>
-          <stop offset="100%" stop-color="#2FA84F"/>
-        </linearGradient>
-      </defs>
-      <path d="M60.7 42.1 A26 26 0 1 0 63.9 78.7"
-            fill="none" stroke="url(#pnArco)" stroke-width="12.5" stroke-linecap="round"/>
-      <path d="M62 26 Q82 38 102 24"
-            fill="none" stroke="#1B4E8E" stroke-width="7.5" stroke-linecap="round"/>
-      <ellipse cx="82" cy="12" rx="18" ry="9.5" transform="rotate(-12 82 12)" fill="#2FA84F"/>
-    </svg>
     <div>
       <div class="brand-name">Plásticos <em>Nacionales</em></div>
       <div class="brand-sub">Mensajería y encargos · Logística</div>
@@ -56,11 +42,6 @@
 <!-- ============ LOGIN ============ -->
 <main class="login-stage" id="loginStage">
   <div class="login-inner">
-    <div class="login-head">
-      <h1>Pide un envío, sigue su ruta,<br>cierra el servicio.</h1>
-      <p>Registro y trazabilidad de mensajería, entrega de documentos y recojo de paquetes para las sedes de Plásticos Nacionales.</p>
-    </div>
-
     <div class="login-grid">
       <section class="waybill card-pad">
         <h2 class="card-title">Ingreso del solicitante</h2>
@@ -79,8 +60,8 @@
 
         <div class="field">
           <label for="dniInput">Documento de identidad <span class="req">*</span></label>
-          <input class="input dni" id="dniInput" inputmode="numeric" maxlength="8" placeholder="00000000" autocomplete="off">
-          <div class="hint">8 dígitos, sin puntos ni guiones.</div>
+          <input class="input dni" id="dniInput" inputmode="numeric" maxlength="9" placeholder="00000000" autocomplete="off">
+          <div class="hint">8 dígitos, sin puntos ni guiones. Si tu DNI empieza con cero, escríbelo completo. Carné de extranjería: 9 dígitos.</div>
         </div>
         <button class="btn btn-wide" onclick="entrarSolicitante()">Entrar</button>
       </section>
@@ -94,9 +75,6 @@
           <div class="err" id="pinErr">Clave incorrecta. Vuelve a intentarlo.</div>
         </div>
         <button class="btn btn-ghost btn-wide" onclick="entrarAdmin()">Entrar como logística</button>
-        <div class="hint" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--line-soft)">
-          Clave de demostración: <code style="font-family:var(--mono);color:var(--primary)">logistica</code>. Cámbiala en la pestaña Padrón antes de usar la plataforma con datos reales.
-        </div>
       </section>
     </div>
   </div>
@@ -179,7 +157,9 @@
 
         <div class="field">
           <label for="fDestino">Dirección de destino <span class="req">*</span></label>
-          <input class="input" id="fDestino" placeholder="Calle, número, distrito y referencia">
+          <input class="input" id="fDestino" list="dlDestinos" autocomplete="off" placeholder="Empieza a escribir el cliente o la dirección">
+          <datalist id="dlDestinos"></datalist>
+          <div class="hint">Los destinos habituales aparecen al escribir. Si no está en la lista, escribe la dirección completa.</div>
           <div class="err" id="eDestino">Escribe la dirección exacta de destino.</div>
         </div>
 
@@ -223,6 +203,7 @@
           <div class="ticket-facts" style="border-top:none;padding-top:8px">
             <div class="fact">Nombre <b id="miNombre">—</b></div>
             <div class="fact mono">DNI <b id="miDni">—</b></div>
+            <div class="fact">Cargo <b id="miCargo">—</b></div>
             <div class="fact">Área <b id="miArea">—</b></div>
           </div>
         </div>
@@ -236,14 +217,17 @@
     <div class="section-head">
       <div>
         <h2>Seguimiento de un ticket</h2>
-        <p>Escribe tu número correlativo para ver en qué punto está el servicio.</p>
+        <p>Escribe solo el número de tu ticket para ver en qué punto está el servicio.</p>
       </div>
     </div>
     <div class="card card-pad trace-box">
       <div class="trace-row">
         <div class="field" style="margin:0">
-          <label for="qTicket">Número correlativo</label>
-          <input class="input" id="qTicket" placeholder="REQ-001" style="font-family:var(--mono);letter-spacing:1px">
+          <label for="qTicket">Número de ticket</label>
+          <div class="prefijado">
+            <span class="prefijo">REQ-</span>
+            <input class="input" id="qTicket" inputmode="numeric" maxlength="6" placeholder="001" autocomplete="off">
+          </div>
         </div>
         <button class="btn" onclick="consultarTicket()">Consultar</button>
       </div>
@@ -293,7 +277,7 @@
     <div class="section-head">
       <div>
         <h2>Histórico de servicios</h2>
-        <p>Una fila por servicio, lista para exportar o conectar a Power BI / Looker Studio.</p>
+        <p>Una fila por servicio, lista para exportar o conectar a Power BI / Looker Studio. Incluye el histórico 2026 cargado de la planilla de logística.</p>
       </div>
       <div class="tools">
         <input class="input" id="qHist" placeholder="Buscar ticket, solicitante o destino" style="width:280px" oninput="renderHistorico()">
@@ -301,7 +285,7 @@
       </div>
     </div>
     <div class="banner">
-      <div><b>Estructura del archivo:</b> 23 columnas planas, una fila por servicio, separador punto y coma y codificación UTF-8 con BOM para que Excel en español lo abra sin pasos extra. Las fechas van en formato ISO (AAAA-MM-DD) y los tiempos en horas decimales.</div>
+      <div><b>Estructura del archivo:</b> 24 columnas planas, una fila por servicio, separador punto y coma y codificación UTF-8 con BOM para que Excel en español lo abra sin pasos extra. Las fechas van en formato ISO (AAAA-MM-DD) y los tiempos en horas decimales. La columna <b>fuente</b> distingue lo cargado de la planilla 2026 de lo registrado en la aplicación.</div>
     </div>
     <div class="table-wrap" id="tHist"></div>
   </section>
@@ -315,10 +299,15 @@
       <div class="tools" id="fKpi"></div>
     </div>
     <div class="kpis" id="kpiCards"></div>
+    <div class="panel">
+      <h3>Gasto por mes</h3>
+      <p class="sub">Lo facturado por mensajería en cada mes del rango.</p>
+      <div id="chMeses"></div>
+    </div>
     <div class="grid2">
       <div class="panel">
         <h3>Servicios por día</h3>
-        <p class="sub">Últimos 21 días con movimiento.</p>
+        <p class="sub">Los últimos 21 días en los que hubo servicios.</p>
         <div id="chDias"></div>
       </div>
       <div class="panel">
@@ -342,12 +331,12 @@
     <div class="grid2">
       <div class="panel">
         <h3>Reparto por vehículo</h3>
-        <p class="sub">Servicios con recurso asignado.</p>
+        <p class="sub">Solo los tickets registrados en la app: la planilla de 2026 no anotaba el transporte.</p>
         <div id="chVehiculo"></div>
       </div>
       <div class="panel">
         <h3>Tiempos del flujo</h3>
-        <p class="sub">Promedio entre cada paso, en horas.</p>
+        <p class="sub">Promedio entre cada paso, en horas. Se llena con los tickets registrados en la app.</p>
         <div id="chTiempos"></div>
       </div>
     </div>
@@ -382,27 +371,27 @@
 
       <div class="panel">
         <h3>Personal habilitado</h3>
-        <p class="sub"><span id="cntPadron">0</span> personas en el padrón.</p>
+        <p class="sub"><span id="cntPadron">0</span> personas en el padrón de RR.HH.</p>
         <div class="banner" style="margin-bottom:14px">
-          <div><b>Datos de demostración.</b> El padrón cargado es ficticio. Reemplázalo por el listado real de RR.HH. antes de poner la plataforma en producción.</div>
+          <div><b>El listado no se muestra completo.</b> Son datos personales de todo el personal: busca por documento, nombre o apellido y aparecerá solo esa ficha.</div>
         </div>
         <div class="row">
-          <div class="field"><label for="pDni">DNI</label><input class="input" id="pDni" maxlength="8" inputmode="numeric" placeholder="00000000"></div>
+          <div class="field"><label for="pDni">Documento</label><input class="input" id="pDni" maxlength="9" inputmode="numeric" placeholder="00000000"></div>
           <div class="field"><label for="pNom">Nombre y apellidos</label><input class="input" id="pNom" placeholder="Nombre completo"></div>
         </div>
         <div class="row">
-          <div class="field"><label for="pArea">Área</label><input class="input" id="pArea" placeholder="Ej.: Compras y Logística"></div>
-          <div class="field"><label for="pSede">Sede</label>
-            <select class="select" id="pSede">
-              <option>Plásticos Nacionales - Talleres</option>
-              <option>Plásticos Nacionales - Fraguas</option>
-            </select>
-          </div>
+          <div class="field"><label for="pCargo">Cargo</label><input class="input" id="pCargo" placeholder="Ej.: Coordinador de Logística"></div>
+          <div class="field"><label for="pArea">Área</label><input class="input" id="pArea" placeholder="Ej.: Logistica"></div>
         </div>
-        <div class="err" id="ePadron">Completa DNI (8 dígitos) y nombre.</div>
+        <div class="err" id="ePadron">Completa el documento (8 dígitos, o 9 si es carné de extranjería) y el nombre.</div>
         <button class="btn btn-sm" onclick="agregarPersona()">Agregar al padrón</button>
-        <div class="table-wrap" style="margin-top:16px;max-height:340px">
-          <table style="min-width:520px"><thead><tr><th>DNI</th><th>Nombre</th><th>Área</th><th>Sede</th><th></th></tr></thead><tbody id="tbPadron"></tbody></table>
+        <div class="field" style="margin:16px 0 6px">
+          <label for="qPadron">Buscar en el padrón</label>
+          <input class="input" id="qPadron" placeholder="Documento, apellido o nombre" oninput="renderPadron()" autocomplete="off">
+          <div class="hint">Coincidencias: <span id="cntPadronVista">—</span></div>
+        </div>
+        <div class="table-wrap" style="max-height:340px">
+          <table style="min-width:600px"><thead><tr><th>Documento</th><th>Nombre</th><th>Cargo</th><th>Área</th><th></th></tr></thead><tbody id="tbPadron"></tbody></table>
         </div>
       </div>
     </div>

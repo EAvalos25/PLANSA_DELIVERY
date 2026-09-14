@@ -14,6 +14,7 @@
 import { $ } from './utils/dom.js';
 import { hoyISO } from './utils/format.js';
 import { cargar } from './db/index.js';
+import { DESTINOS_FRECUENTES } from './db/destinos.js';
 import * as archivos from './storage/index.js';
 import { sesion } from './state/sessionState.js';
 import { iniciarSincronizacion, renderTodo } from './render.js';
@@ -51,6 +52,8 @@ $('dniInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrarSo
 $('dniInput').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, ''); });
 $('pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrarAdmin(); });
 $('qTicket').addEventListener('keydown', e => { if (e.key === 'Enter') consultarTicket(); });
+$('qTicket').addEventListener('input', e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); });
+$('pDni').addEventListener('input', e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); });
 $('fTel').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, ''); });
 
 // ---- Arranque ----
@@ -66,6 +69,12 @@ archivos.inicializar()
   .then(() => renderTodo());
 
 actualizarBoton();
+
+// Destinos frecuentes del histórico real: se ofrecen como sugerencia, el
+// campo sigue aceptando cualquier dirección escrita a mano.
+$('dlDestinos').innerHTML = DESTINOS_FRECUENTES
+  .map(d => '<option value="' + d.replace(/"/g, '&quot;') + '"></option>').join('');
+
 $('fFecha').min = hoyISO();
 $('fFecha').value = hoyISO();
 refrescarHoras();

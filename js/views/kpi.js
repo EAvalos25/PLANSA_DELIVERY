@@ -1,5 +1,5 @@
 import { $, esc } from '../utils/dom.js';
-import { pad, isoDia, fechaCorta, soles, solesK, horasEntre, corta } from '../utils/format.js';
+import { fechaCorta, soles, solesK, horasEntre, corta } from '../utils/format.js';
 import { DB } from '../db/index.js';
 import { origenCorto } from './presenters.js';
 
@@ -7,7 +7,7 @@ import { origenCorto } from './presenters.js';
  * Panel de indicadores: tarjetas KPI y gráficos (barras horizontales y
  * columnas SVG) sobre el rango de fechas seleccionado.
  */
-let filtroKpi = 30;
+let filtroKpi = 0;
 
 export function setFiltroKpi(d) { filtroKpi = d; renderKpi(); }
 export function renderKpiSiVisible() { if ($('aKpi').classList.contains('on')) renderKpi(); }
@@ -80,15 +80,32 @@ export function renderKpi() {
     { c: '', v: promAtencion != null ? promAtencion.toFixed(1) + ' h' : 'N/D', k: 'Atención de punta a punta', d: 'Del registro al cierre' }
   ].map(x => '<div class="kpi ' + x.c + '"><div class="v">' + x.v + '</div><div class="k">' + x.k + '</div><div class="d">' + x.d + '</div></div>').join('');
 
-  // servicios por día (últimos 21 días del rango)
-  const dias = [];
-  const n = Math.min(21, todo ? 21 : filtroKpi);
-  for (let i = n - 1; i >= 0; i--) {
-    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
-    const iso = isoDia(d);
-    dias.push({ k: pad(d.getDate(), 2) + '/' + pad(d.getMonth() + 1, 2), v: lista.filter(s => s.creado.slice(0, 10) === iso).length });
-  }
+  // servicios por día: los últimos 21 días CON movimiento, no los 21 últimos
+  // del calendario, que con un histórico cerrado saldrían todos en cero.
+  const porDia = new Map();
+  lista.forEach(s => {
+    const iso = s.creado.slice(0, 10);
+    porDia.set(iso, (porDia.get(iso) || 0) + 1);
+  });
+  const dias = [...porDia.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-21)
+    .map(([iso, v]) => ({ k: iso.slice(8) + '/' + iso.slice(5, 7), v }));
   $('chDias').innerHTML = columnas(dias);
+
+  // gasto por mes
+  const porMes = new Map();
+  lista.forEach(s => {
+    const mes = s.creado.slice(0, 7);
+    const o = porMes.get(mes) || { n: 0, c: 0 };
+    o.n++; o.c += (s.costo || 0);
+    porMes.set(mes, o);
+  });
+  const MES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'set', 'oct', 'nov', 'dic'];
+  $('chMeses').innerHTML = barras(
+    [...porMes.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([mes, o]) => ({
+      k: MES[+mes.slice(5) - 1] + ' ' + mes.slice(0, 4),
+      v: o.c,
+      t: soles(o.c) + ' · ' + o.n + ' viajes · ' + soles(o.n ? o.c / o.n : 0) + '/viaje'
+    })), null, 'c3');
 
   // costo por sede de origen
   const sedes = {};
@@ -100,19 +117,20 @@ export function renderKpi() {
   // ranking de solicitantes
   const users = {};
   lista.forEach(s => {
-    users[s.dni] = users[s.dni] || { n: 0, c: 0, nombre: s.nombre };
-    users[s.dni].n++; users[s.dni].c += (s.costo || 0);
+    const k = s.dni || s.nombre;
+    users[k] = users[k] || { n: 0, c: 0, nombre: s.nombre, dni: s.dni };
+    users[k].n++; users[k].c += (s.costo || 0);
   });
   $('chUsuarios').innerHTML = barras(
-    Object.entries(users).sort((a, b) => b[1].n - a[1].n).slice(0, 8)
-      .map(([dni, o]) => ({ k: o.nombre + ' · DNI ' + dni, v: o.n, t: o.n + ' viajes · ' + soles(o.c) })));
+    Object.values(users).sort((a, b) => b.n - a.n).slice(0, 8)
+      .map(o => ({ k: corta(o.nombre, 34) + (o.dni ? ' · DNI ' + o.dni : ''), v: o.n, t: o.n + ' viajes · ' + soles(o.c) })));
 
   // ranking de destinos
   const dest = {};
-  lista.forEach(s => { const k = s.destino.split(' - ')[0]; dest[k] = dest[k] || { n: 0, c: 0 }; dest[k].n++; dest[k].c += (s.costo || 0); });
+  lista.forEach(s => { const k = s.destino.split(',')[0].trim(); dest[k] = dest[k] || { n: 0, c: 0 }; dest[k].n++; dest[k].c += (s.costo || 0); });
   $('chDestinos').innerHTML = barras(
     Object.entries(dest).sort((a, b) => b[1].n - a[1].n).slice(0, 8)
-      .map(([k, o]) => ({ k: corta(k, 40), v: o.n, t: o.n + ' visitas' })), null, 'c2');
+      .map(([k, o]) => ({ k: corta(k, 40), v: o.n, t: o.n + ' visitas · ' + soles(o.c) })), null, 'c2');
 
   // vehículos
   const veh = {};

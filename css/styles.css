@@ -126,8 +126,7 @@ a{color:var(--primary)}
   background:var(--surface);
   border-bottom:1px solid var(--line);
 }
-.brand{display:flex;align-items:center;gap:11px;min-width:0}
-.brand-logo{width:47px;height:43px;flex:none;display:block}
+.brand{display:flex;align-items:center;min-width:0}
 .brand-name{font-weight:700;letter-spacing:-.3px;line-height:1.12;white-space:nowrap;color:var(--brand-blue);font-size:16px}
 :root[data-theme="dark"] .brand-name{color:var(--text)}
 .brand-name em{font-style:normal;color:var(--brand-green)}
@@ -165,13 +164,6 @@ a{color:var(--primary)}
 /* ---------- Login ---------- */
 .login-stage{min-height:calc(100vh - 60px);display:grid;place-items:center;padding:32px 18px 60px}
 .login-inner{width:100%;max-width:940px}
-.login-head{margin-bottom:26px;max-width:620px}
-.login-head h1{
-  font-size:clamp(28px,4.4vw,42px);line-height:1.08;margin:0 0 12px;
-  font-weight:700;letter-spacing:-1.1px;color:var(--brand-blue);
-}
-:root[data-theme="dark"] .login-head h1{color:var(--text)}
-.login-head p{margin:0;color:var(--muted);font-size:15.5px;max-width:56ch}
 .login-grid{display:grid;grid-template-columns:1.35fr 1fr;gap:18px;align-items:start}
 @media(max-width:820px){.login-grid{grid-template-columns:1fr}}
 
@@ -218,6 +210,25 @@ a{color:var(--primary)}
 .textarea{resize:vertical;min-height:74px}
 .select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 17px) 50%,calc(100% - 12px) 50%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:34px}
 .input.dni{font-family:var(--mono);font-size:19px;letter-spacing:5px;text-align:center;padding:13px 12px}
+
+/* Campo con prefijo fijo: el borde y el foco los lleva el contenedor, para que
+   el prefijo y el input se lean como un solo campo. Se usa en el número de
+   ticket, donde "REQ-" no se escribe. */
+.prefijado{
+  display:flex;align-items:center;background:var(--surface);
+  border:1px solid var(--line);border-radius:8px;
+  transition:border-color .12s ease, box-shadow .12s ease;
+}
+.prefijado:focus-within{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.prefijado .prefijo{
+  padding:10px 0 10px 12px;font-family:var(--mono);font-size:15px;
+  color:var(--muted);letter-spacing:1px;user-select:none;
+}
+.prefijado .input{
+  border:none;background:none;padding-left:3px;
+  font-family:var(--mono);font-size:15px;letter-spacing:1px;
+}
+.prefijado .input:focus{box-shadow:none}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .toggle{display:flex;gap:9px}
 .tg{flex:1;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:11px 14px;color:var(--muted);font-weight:550}
