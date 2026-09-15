@@ -252,11 +252,17 @@
 
 <!-- ============ ADMIN ============ -->
 <main class="wrap view" id="viewAdmin">
-  <div class="tabs">
+  <div class="tabs tabs-admin">
     <button class="tab on" data-atab="bandeja" onclick="tabAdmin('bandeja')">Bandeja de despacho <span class="count" id="cntBandeja">0</span></button>
     <button class="tab" data-atab="historico" onclick="tabAdmin('historico')">Histórico <span class="count" id="cntHist">0</span></button>
     <button class="tab" data-atab="kpi" onclick="tabAdmin('kpi')">Indicadores</button>
     <button class="tab" data-atab="padron" onclick="tabAdmin('padron')">Padrón y accesos <span class="count" id="cntAut">0</span></button>
+    <button class="btn-payback" id="btnPayback" data-atab="payback" onclick="tabAdmin('payback')" title="Analizar si conviene motorizado propio">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>
+      </svg>
+      Payback
+    </button>
   </div>
 
   <section class="view on" id="aBandeja">
@@ -395,6 +401,20 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <!-- El contenido lo arma payback/frontend/vista.js; aquí solo va el hueco. -->
+  <section class="view" id="aPayback">
+    <div class="section-head">
+      <div>
+        <h2>Payback de la mensajería</h2>
+        <p>Cuánto cuesta tercerizar hoy frente a tener motorizado propio, y en cuánto se recupera la inversión.</p>
+      </div>
+      <div class="tools">
+        <button class="btn btn-ghost btn-sm" onclick="renderPayback()">Recalcular</button>
+      </div>
+    </div>
+    <div id="pbCuerpo"></div>
   </section>
 </main>
 

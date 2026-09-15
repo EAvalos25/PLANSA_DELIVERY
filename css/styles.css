@@ -281,6 +281,8 @@ a{color:var(--primary)}
 
 /* ---------- Navegación de vistas ---------- */
 .tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);margin-bottom:24px;overflow-x:auto;scrollbar-width:none}
+/* El acceso a payback va pegado a la derecha, separado de las pestañas. */
+.tabs-admin{align-items:center}
 .tabs::-webkit-scrollbar{display:none}
 .tab{
   background:none;border:none;border-bottom:2px solid transparent;
@@ -531,3 +533,95 @@ svg{display:block;max-width:100%}
 .detail-grid{display:grid;grid-template-columns:130px 1fr;gap:9px 16px;font-size:13.5px}
 .detail-grid dt{color:var(--muted);font-size:12.5px}
 .detail-grid dd{margin:0;word-break:break-word}
+
+
+/* ================= Módulo payback ================= */
+/* Acceso, arriba a la derecha de la vista de logística. */
+.btn-payback{
+  margin-left:auto;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
+  background:var(--primary-soft);color:var(--primary);
+  border:1px solid var(--primary-line);border-radius:999px;
+  padding:6px 15px 6px 12px;font-weight:600;font-size:13.5px;margin-bottom:5px;
+  transition:background .12s ease, color .12s ease;
+}
+.btn-payback svg{width:16px;height:16px;flex:none}
+.btn-payback:hover{background:var(--primary);color:var(--on-primary)}
+.btn-payback.on{background:var(--primary);color:var(--on-primary);border-color:var(--primary)}
+
+.pb-controles{margin-bottom:20px}
+
+/* Veredicto: el escenario recomendado, arriba de todo. */
+.pb-veredicto{
+  border:1px solid var(--primary-line);border-radius:var(--r);
+  background:var(--primary-soft);padding:20px;margin-bottom:22px;
+}
+.pb-veredicto-tag{
+  display:inline-block;background:var(--primary);color:var(--on-primary);
+  border-radius:999px;padding:2px 11px;font-size:11.5px;font-weight:700;
+  letter-spacing:.3px;text-transform:uppercase;margin-bottom:9px;
+}
+.pb-veredicto h3{margin:0 0 4px;font-size:19px;font-weight:650;letter-spacing:-.3px}
+.pb-veredicto p{margin:0 0 18px;font-size:13.5px;color:var(--muted);max-width:70ch}
+.pb-veredicto .kpis{margin-bottom:0}
+
+.pb-fact-nota{display:block;font-size:11px;color:var(--muted2);font-weight:400}
+.pb-nota{display:block;font-size:11px;color:var(--muted2);margin-top:1px}
+
+/* Las tres tarjetas de escenario. */
+.pb-escenarios{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:16px}
+.pb-card{
+  border:1px solid var(--line);border-radius:var(--r);background:var(--surface);
+  padding:18px;box-shadow:var(--shadow-sm);position:relative;
+}
+.pb-card.on{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft),var(--shadow-sm)}
+.pb-card-tag{
+  position:absolute;top:-10px;right:16px;background:var(--primary);color:var(--on-primary);
+  border-radius:999px;padding:2px 11px;font-size:11px;font-weight:700;
+}
+.pb-card h3{margin:0 0 5px;font-size:15.5px;font-weight:650;padding-right:90px}
+.pb-card-detalle{margin:0 0 15px;font-size:12.5px;color:var(--muted2);line-height:1.45}
+.pb-total{
+  display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  padding:12px 0;border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);
+}
+.pb-total span{font-size:12.5px;color:var(--muted)}
+.pb-total b{font-family:var(--mono);font-size:22px;font-weight:600;letter-spacing:-.8px}
+.pb-ahorro{margin-top:10px;font-size:13px;font-weight:600}
+.pb-ahorro.bien{color:var(--ok)}
+.pb-ahorro.mal{color:var(--danger)}
+.pb-inversion{margin-top:3px;font-size:12px;color:var(--muted2)}
+
+.pb-desglose{width:100%;min-width:0;margin-top:14px;font-size:12.5px}
+.pb-desglose td{padding:6px 0;border-bottom:1px solid var(--line-soft);vertical-align:top}
+.pb-desglose td:last-child{text-align:right;white-space:nowrap;font-family:var(--mono);color:var(--muted)}
+.pb-desglose tr:hover{background:none}
+.pb-desglose .pb-sep td{
+  padding-top:12px;color:var(--muted2);font-size:11px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.4px;border-bottom:none;
+}
+
+.pb-avisos{margin-top:15px;display:grid;gap:9px}
+.pb-aviso{display:flex;gap:9px;align-items:flex-start}
+.pb-aviso .chip{flex:none;font-size:11px;padding:2px 9px 2px 7px}
+.pb-aviso p{margin:1px 0 0;font-size:12px;color:var(--muted);line-height:1.45}
+
+.pb-condicion{display:flex;gap:11px;align-items:flex-start;padding:13px 0;border-bottom:1px solid var(--line-soft)}
+.pb-condicion:last-child{border-bottom:none;padding-bottom:0}
+.pb-condicion .chip{flex:none}
+.pb-condicion b{font-size:13.5px}
+.pb-condicion p{margin:3px 0 0;font-size:12.5px;color:var(--muted);line-height:1.5;max-width:85ch}
+
+.pb-medidas{display:grid;gap:14px}
+.pb-medida{display:flex;gap:13px;align-items:flex-start}
+.pb-medida-n{
+  flex:none;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;
+  background:var(--primary-soft);color:var(--primary);
+  font-family:var(--mono);font-size:13px;font-weight:700;
+}
+.pb-medida b{font-size:13.5px}
+.pb-medida p{margin:3px 0 0;font-size:12.5px;color:var(--muted);line-height:1.5;max-width:85ch}
+
+@media(max-width:780px){
+  .btn-payback{margin-left:8px}
+  .pb-card h3{padding-right:0}
+}

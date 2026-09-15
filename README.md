@@ -43,7 +43,7 @@ Luego visita `http://localhost:8080`.
 index.html                  Marcado de las 3 vistas (login, solicitante, logística)
 css/
   styles.css                 Hoja de estilos única (tokens de color claro/oscuro)
-js/
+js/                          ← LA APLICACIÓN DE MENSAJERÍA
   config.js                  Constantes (clave de storage, ventana horaria, margen)
   auth.js                    Login por DNI/PIN, autorizaciones, apertura de vistas
   render.js                  Orquestador: repinta lo que corresponde a la sesión
@@ -80,6 +80,24 @@ js/
     history.js                 Histórico filtrable y exportación a CSV
     kpi.js                     Indicadores y gráficos
     roster.js                  Padrón de personal y autorizaciones
+
+payback/                     ← MÓDULO PAYBACK (análisis de motorizado propio)
+  README.md                  El análisis escrito, con las cifras y la conclusión
+  data/                      Los supuestos: se editan sin tocar el cálculo
+    parametros.js             Jornada, tasas de ley, costos de flota, escenarios
+    motos.js                  Las 3 opciones de 150 cc a cotizar
+    zonas.js                  Distritos, tiempos de viaje y días de ruta
+  backend/                   Cálculo puro, sin DOM: se corre y se verifica en Node
+    planilla.js               Costo laboral por persona + avisos legales
+    flota.js                  Inversión y gasto mensual de una moto propia
+    demanda.js                Lo que pasa hoy, leído del histórico de servicios
+    capacidad.js              Minutos de ruta que exige la demanda
+    escenarios.js             Arma los tres escenarios completos
+    payback.js                Compara contra el courier y calcula el retorno
+  frontend/
+    vista.js                  La pantalla; única capa que toca el DOM
+  test/
+    pruebas.mjs               node payback/test/pruebas.mjs
 ```
 
 Cada módulo tiene una responsabilidad única. La única dependencia circular

@@ -3,6 +3,7 @@ import { renderMis, consultarTicket } from './tickets.js';
 import { renderKpi } from './kpi.js';
 import { renderHistorico } from './history.js';
 import { renderPadron } from './roster.js';
+import { renderPayback } from '../../payback/frontend/vista.js';
 
 /** Pestañas de la vista de solicitante: nueva solicitud / seguimiento / mis servicios. */
 export function tabUser(k) {
@@ -14,14 +15,18 @@ export function tabUser(k) {
   if (k === 'seguimiento' && $('qTicket').value) consultarTicket();
 }
 
-/** Pestañas de la vista de logística: bandeja / histórico / indicadores / padrón. */
+/** Vistas de logística: bandeja / histórico / indicadores / padrón / payback. */
 export function tabAdmin(k) {
   document.querySelectorAll('[data-atab]').forEach(b => b.classList.toggle('on', b.dataset.atab === k));
   $('aBandeja').classList.toggle('on', k === 'bandeja');
   $('aHistorico').classList.toggle('on', k === 'historico');
   $('aKpi').classList.toggle('on', k === 'kpi');
   $('aPadron').classList.toggle('on', k === 'padron');
+  $('aPayback').classList.toggle('on', k === 'payback');
+  // El botón de payback vive fuera de la fila de pestañas, así que se marca aparte.
+  $('btnPayback').classList.toggle('on', k === 'payback');
   if (k === 'kpi') renderKpi();
   if (k === 'historico') renderHistorico();
   if (k === 'padron') renderPadron();
+  if (k === 'payback') renderPayback();
 }

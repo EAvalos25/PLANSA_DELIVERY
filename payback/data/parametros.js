@@ -1,0 +1,167 @@
+/**
+ * Parámetros de entrada del análisis payback.
+ *
+ * Todo lo que se puede discutir con RR.HH., con Finanzas o con un proveedor
+ * vive aquí, separado del cálculo (../backend/). Para simular otra hipótesis
+ * se cambia un número de este archivo y nada más.
+ *
+ * ADVERTENCIA SOBRE LAS TASAS DE LEY: son las del régimen laboral común del
+ * sector privado peruano y están puestas como referencia para ordenar la
+ * decisión, no como asesoría legal ni contable. Las primas de Vida Ley y SCTR
+ * varían por aseguradora y por nivel de riesgo. Antes de firmar nada, que
+ * RR.HH. y el contador validen estos porcentajes.
+ */
+
+/** Jornada pedida para el motorizado, en los dos escenarios a tiempo completo. */
+export const JORNADA = {
+  // Lunes a viernes de 8:00 a 17:30 y sábados de 8:00 a 12:30.
+  entreSemana: { desde: '08:00', hasta: '17:30' },
+  sabado: { desde: '08:00', hasta: '12:30' },
+
+  // El refrigerio no se computa como tiempo de trabajo (mínimo legal 45 min).
+  // Con 60 min la semana queda en 47 h, debajo del tope de 48 h; con 45 min
+  // se pasa a 48.25 h y ya habría que pagar sobretiempo. Ver ../backend/planilla.js
+  refrigerioMin: 60,
+
+  topeLegalSemanalHoras: 48,
+
+  // Días trabajados al mes, promedio (52 semanas / 12).
+  diasSemanaAlMes: 21.7,
+  sabadosAlMes: 4.33
+};
+
+/**
+ * Tasas y topes de ley. Régimen laboral común, sector privado.
+ * Fuentes: D.Leg. 728, D.S. 001-97-TR (CTS), Ley 30334 (gratificaciones),
+ * Ley 26790 (EsSalud), D.Leg. 688 (Vida Ley), D.S. 009-97-SA (SCTR).
+ */
+export const LEY = {
+  /** Remuneración mínima vital vigente. */
+  rmv: 1130,
+
+  /** Aporte del empleador al seguro de salud, sobre la remuneración mensual. */
+  essalud: 0.09,
+
+  /** Gratificaciones de julio y diciembre: una remuneración cada una. */
+  gratificacionesAlAnio: 2,
+
+  /**
+   * Bonificación extraordinaria de la Ley 30334: el 9% de EsSalud que no se
+   * paga sobre la gratificación se entrega al trabajador. Es costo igual.
+   */
+  bonificacionExtraordinaria: 0.09,
+
+  /**
+   * CTS: dos depósitos al año (mayo y noviembre). La remuneración computable
+   * incluye un sexto de la última gratificación, así que el año equivale a
+   * 7/6 de sueldo, no a uno.
+   */
+  ctsSextoGratificacion: 1 / 6,
+
+  /** Vacaciones: 30 días al año para jornada completa, 6 para part time. */
+  vacacionesDiasCompleto: 30,
+  vacacionesDiasPartTime: 6,
+
+  /** Seguro Vida Ley, obligatorio desde el primer día. Prima referencial. */
+  vidaLey: 0.0071,
+
+  /**
+   * SCTR (salud + pensión) para actividad de riesgo. Referencial: depende de
+   * la aseguradora y de la clasificación de la actividad. Se incluye porque
+   * manejar moto en Lima todo el día es exposición real.
+   */
+  sctr: 0.028,
+
+  /** Asignación familiar: 10% de la RMV, solo si tiene hijos menores de 18. */
+  asignacionFamiliarTasa: 0.10,
+
+  /** Horas diarias por debajo de las cuales el contrato es part time legal. */
+  umbralPartTimeHoras: 4
+};
+
+/**
+ * Costos de operar una moto propia de la empresa (escenario 2).
+ * Los de combustible y mantenimiento son referenciales de mercado en Lima.
+ */
+export const FLOTA = {
+  tipoCambio: 3.75,                  // S/ por USD, referencial
+
+  /** Trámites de una moto nueva: placa, tarjeta, notaría. */
+  inscripcionSoles: 450,
+
+  soatAnualSoles: 220,
+  seguroVehicularAnualSoles: 900,    // todo riesgo; opcional pero recomendable
+  mantenimientoAnualSoles: 1200,     // 4 servicios al año + llantas + frenos
+
+  /** Vida útil contable de la moto, para depreciar la inversión. */
+  vidaUtilAnios: 5,
+
+  /** Valor de reventa estimado al final de la vida útil, sobre el precio. */
+  valorResidual: 0.25,
+
+  /** Implementos de seguridad del conductor (casco, chaleco, guantes, tópicos). */
+  equipamientoSoles: 700,
+
+  precioGalonSoles: 17.5,
+  rendimientoKmPorGalon: 110,        // típico de una 150cc en ciudad
+
+  /** Kilómetros promedio por día de ruta. Ver ../backend/capacidad.js */
+  kmPorDia: 85
+};
+
+/**
+ * Escenarios tal como los planteó logística. El bono se marca como
+ * remunerativo o no, porque cambia mucho el costo: si es una condición de
+ * trabajo (combustible y mantenimiento de su moto, contra comprobante) no
+ * entra a la base de gratificaciones, CTS ni EsSalud.
+ */
+export const ESCENARIOS = {
+  propia: {
+    id: 'propia',
+    nombre: 'Un motorizado con moto propia',
+    detalle: 'Contrato a tiempo completo. La moto, el combustible y el mantenimiento corren por su cuenta, cubiertos por el bono.',
+    personas: 1,
+    sueldoBase: 1800,
+    bono: 300,
+    bonoRemunerativo: true,
+    jornadaCompleta: true,
+    compraMoto: false
+  },
+  flota: {
+    id: 'flota',
+    nombre: 'Moto de la empresa + un motorizado',
+    detalle: 'La empresa compra una moto de 150 cc y contrata a la persona a tiempo completo. Combustible, mantenimiento y seguros son de la empresa.',
+    personas: 1,
+    sueldoBase: 1800,
+    bono: 0,
+    bonoRemunerativo: true,
+    jornadaCompleta: true,
+    compraMoto: true
+  },
+  dosPartTime: {
+    id: 'dosPartTime',
+    nombre: 'Dos motorizados part time con moto propia',
+    detalle: 'Dos personas que se reparten la jornada, cada una por debajo de 4 horas diarias. Con dos motos en paralelo se cubren dos zonas a la vez.',
+    personas: 2,
+    sueldoBase: 800,
+    bono: 250,
+    bonoRemunerativo: true,
+    jornadaCompleta: false,
+    compraMoto: false
+  }
+};
+
+/**
+ * Supuestos de operación. `minutosPorParada` es lo que toma entregar o recoger
+ * una vez en el punto: estacionar, subir, esperar la firma y volver.
+ */
+export const OPERACION = {
+  minutosPorParada: 12,
+  maxParadasPorRuta: 4,
+
+  /**
+   * Holgura que se reserva del día para lo que no es ruta: cargar, papeleo,
+   * imprevistos y las urgencias que sí se aceptan. Sobre el tiempo disponible.
+   */
+  holgura: 0.15
+};
