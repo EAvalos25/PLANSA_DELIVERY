@@ -34,7 +34,11 @@ import { subirGuia, abrirAdjunto, eliminarAdjunto } from './views/attachments.js
 
 // Módulo payback: análisis de contratar motorizado propio frente al courier.
 // Vive fuera de js/ a propósito, con su propia data, backend y frontend.
-import { renderPayback, setMotoPayback, setBonoPayback } from '../payback/frontend/vista.js';
+import {
+  renderPayback, setMotoPayback, setBonoPayback, setInicioPayback,
+  pbAgregarParada, pbQuitarParada, pbZonaParada, pbCuantasParadas, pbHoraSalida,
+  pbDiaSimulado, pbMinutosParada, pbTiempoZona, pbOrdenarMejor, pbReiniciarSimulador
+} from '../payback/frontend/vista.js';
 
 // ---- Puente hacia los atributos inline del HTML (estático y generado) ----
 Object.assign(window, {
@@ -48,7 +52,9 @@ Object.assign(window, {
   setFiltroKpi,
   renderPadron, agregarPersona, quitarPersona, formAlta, rechazarAut, cambiarPin,
   subirGuia, abrirAdjunto, eliminarAdjunto,
-  renderPayback, setMotoPayback, setBonoPayback
+  renderPayback, setMotoPayback, setBonoPayback, setInicioPayback,
+  pbAgregarParada, pbQuitarParada, pbZonaParada, pbCuantasParadas, pbHoraSalida,
+  pbDiaSimulado, pbMinutosParada, pbTiempoZona, pbOrdenarMejor, pbReiniciarSimulador
 });
 
 // ---- Listeners que no van como atributos inline ----

@@ -7,6 +7,12 @@ import { analizarDemanda } from '../backend/demanda.js';
 import { horasSemanales } from '../backend/planilla.js';
 import { construir } from '../backend/escenarios.js';
 import { comparar } from '../backend/payback.js';
+import { simuladorHTML, alCambiar } from './simulador.js';
+import { calendarioHTML } from './calendario.js';
+
+// El simulador se repinta a través de la pantalla completa: así el resto del
+// análisis y la ruta simulada nunca quedan mostrando cosas distintas.
+alCambiar(() => renderPayback());
 
 /**
  * Pantalla del módulo payback. Es la única capa que toca el DOM: todo el
@@ -17,16 +23,32 @@ import { comparar } from '../backend/payback.js';
  * se registren tickets reales el análisis se actualiza solo.
  */
 
+/** Primer día del mes que viene: el arranque más realista para una contratación. */
+function proximoMes() {
+  const h = new Date();
+  const d = new Date(h.getFullYear(), h.getMonth() + 1, 1);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-01';
+}
+
 /** Opciones que el usuario puede mover desde la pantalla. */
 const estado = {
   idMoto: MOTO_POR_DEFECTO,
   bonoRemunerativo: true,
-  asignacionFamiliar: 0
+  asignacionFamiliar: 0,
+  inicio: proximoMes()
 };
 
 export function setMotoPayback(id) { estado.idMoto = id; renderPayback(); }
 export function setBonoPayback(v) { estado.bonoRemunerativo = v === 'si'; renderPayback(); }
 export function setAsignacionPayback(v) { estado.asignacionFamiliar = Number(v) || 0; renderPayback(); }
+export function setInicioPayback(v) { if (v) estado.inicio = v; renderPayback(); }
+
+// Los controles del simulador de ruta se reexportan desde aquí para que main.js
+// tenga un solo punto de entrada al módulo.
+export {
+  pbAgregarParada, pbQuitarParada, pbZonaParada, pbCuantasParadas, pbHoraSalida,
+  pbDiaSimulado, pbMinutosParada, pbTiempoZona, pbOrdenarMejor, pbReiniciarSimulador
+} from './simulador.js';
 
 const pct = n => (n * 100).toFixed(0) + '%';
 const nivelChip = n => n === 'alto' ? 'st-espera' : n === 'ok' ? 'st-concluido' : 'st-transito';
@@ -40,7 +62,7 @@ export function renderPayback() {
   }
 
   const escenarios = construir(demanda, estado);
-  const cmp = comparar(escenarios, demanda);
+  const cmp = comparar(escenarios, demanda, { inicio: estado.inicio });
   const mejor = cmp.recomendacion.mejor;
 
   $('pbCuerpo').innerHTML =
@@ -49,7 +71,9 @@ export function renderPayback() {
     + situacionActual(demanda)
     + tarjetasEscenarios(cmp, mejor)
     + condicionesHTML(cmp)
+    + calendarioHTML(mejor, estado.inicio, cmp.gastoActual)
     + capacidadHTML(cmp, demanda)
+    + simuladorHTML()
     + politicaUrgencias(cmp, demanda)
     + advertencia();
 }
@@ -285,7 +309,8 @@ function advertencia() {
   return '<div class="banner" style="margin-top:22px"><div><b>Antes de decidir.</b> Las tasas de ley están'
     + ' puestas como referencia del régimen laboral común y las primas de Vida Ley y SCTR varían por'
     + ' aseguradora: que RR.HH. y contabilidad las validen. Los precios de las motos son marcadores de'
-    + ' posición dentro del rango indicado, no cotizaciones. Los minutos de viaje por zona son estimaciones.'
+    + ' posición dentro del rango de mercado indicado, no cotizaciones. Los minutos de viaje por zona son'
+    + ' estimaciones y se ajustan en el simulador.'
     + ' Todo eso se edita en <span class="mono">payback/data/parametros.js</span> y'
     + ' <span class="mono">payback/data/motos.js</span> sin tocar el cálculo.</div></div>';
 }

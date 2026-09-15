@@ -18,8 +18,11 @@ const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLA') + ' ' + m
 const cerca = (a, b, tol = 0.01) => Math.abs(a - b) <= tol;
 
 const { LEY, JORNADA, ESCENARIOS } = await mod('payback/data/parametros.js');
-const { MOTOS } = await mod('payback/data/motos.js');
-const { zonaDe, ZONAS } = await mod('payback/data/zonas.js');
+const { MOTOS, RANGO_USD } = await mod('payback/data/motos.js');
+const { zonaDe, ZONAS, zonaPorId } = await mod('payback/data/zonas.js');
+const { minutosEntre, MINUTOS_MISMA_ZONA, claveDePar } = await mod('payback/data/tiempos.js');
+const { simularSalida, mejorOrden } = await mod('payback/backend/ruta.js');
+const { calendario, leerFecha } = await mod('payback/backend/devengos.js');
 const { costoPersona, horasSemanales } = await mod('payback/backend/planilla.js');
 const { inversion, gastoMensual } = await mod('payback/backend/flota.js');
 const { analizarDemanda } = await mod('payback/backend/demanda.js');
@@ -74,6 +77,14 @@ ok(gm.depreciacion > 0 && cerca(gm.salidaDeCaja, gm.total - gm.depreciacion),
    'la depreciación es costo del período pero no salida de caja');
 ok(gm.combustible > 0 && gm.kmAlMes > 0, 'el combustible sale de los km recorridos');
 
+console.log('\n-- cotización de motos --');
+ok(MOTOS.length === 3, `las tres opciones de 150 cc (${MOTOS.length})`);
+ok(MOTOS.every(m => m.precioUsdReferencial >= RANGO_USD.desde && m.precioUsdReferencial <= RANGO_USD.hasta),
+   `todos los precios caen en el rango US$ ${RANGO_USD.desde}-${RANGO_USD.hasta}: `
+   + MOTOS.map(m => m.precioUsdReferencial).join(', '));
+ok(RANGO_USD.desde === 2500 && RANGO_USD.hasta === 5000, 'el rango es el que pidió logística');
+ok(new Set(MOTOS.map(m => m.id)).size === 3, 'sin ids repetidos');
+
 // ----------------------------------------------------------------- zonas
 console.log('\n-- clasificación de destinos --');
 ok(zonaDe('PLUS COSMÉTICA, AV. VÍCTOR ANDRÉS BELAÚNDE 280, SAN ISIDRO') === 'moderna', 'San Isidro cae en Lima moderna');
@@ -81,6 +92,101 @@ ok(zonaDe('PROCHILCA, AV. LOS ÁLAMOS MZ. D, CHILCA') === 'lejos', 'Chilca no se
 ok(zonaDe('BOHLER, CASTRO RONCEROS 777, CERCADO DE LIMA') === 'centro', 'Cercado de Lima cae en Lima centro');
 ok(zonaDe('INDUSTRIAL CENTER, LOS ROBLES 161, BELLAVISTA - CALLAO') === 'callao', 'Bellavista cae en Callao');
 ok(zonaDe('Una dirección sin distrito') === 'otros', 'lo que no se reconoce va a sin clasificar');
+
+console.log('\n-- tiempos de viaje --');
+ok(ZONAS.every(z => z.minutosIdaVuelta === z.minutosDesdePlanta * 2),
+   'ida y vuelta siempre es el doble del trayecto en un sentido');
+ok(minutosEntre('norte', 'centro') === minutosEntre('centro', 'norte'),
+   'la matriz es simétrica: A-B vale lo mismo que B-A');
+ok(minutosEntre('norte', 'norte') === MINUTOS_MISMA_ZONA,
+   'moverse dentro de la misma zona no es gratis');
+ok(minutosEntre('norte', 'moderna') < zonaPorId('norte').minutosDesdePlanta + zonaPorId('moderna').minutosDesdePlanta,
+   'encadenar dos zonas cuesta menos que volver a planta entre una y otra');
+ok(minutosEntre('inventada', 'otra') > 0, 'un par desconocido cae en el promedio, no en cero');
+ok(minutosEntre('norte', 'centro', { [claveDePar('norte', 'centro')]: 5 }) === 5,
+   'los ajustes del simulador pisan la matriz');
+
+console.log('\n-- simulador de una salida --');
+const rutaBase = [{ zonaId: 'norte', paradas: 3 }, { zonaId: 'centro', paradas: 2 }, { zonaId: 'moderna', paradas: 3 }];
+const sim = simularSalida(rutaBase, { salida: '08:00' });
+ok(sim.paradas === 8 && sim.zonas === 3, `cuenta 8 entregas en 3 zonas (${sim.paradas} en ${sim.zonas})`);
+ok(sim.salida === '08:00' && /^\d{2}:\d{2}$/.test(sim.retorno), `sale 08:00 y retorna ${sim.retorno}`);
+ok(cerca(sim.total, sim.minutosViaje + sim.minutosParadas), 'el total es tránsito más tiempo en los puntos');
+ok(cerca(sim.total, sim.tramos.reduce((a, t) => a + t.minutos, 0)), 'los tramos suman el total');
+ok(sim.tramos[0].texto.startsWith('Planta →'), 'el primer tramo sale de planta');
+ok(sim.tramos[sim.tramos.length - 1].texto.endsWith('→ Planta'), 'el último tramo es el retorno a planta');
+ok(sim.entra, 'esa salida entra en la jornada');
+
+// Doce entregas en las tres zonas más lejanas SÍ entran, pero solo saliendo
+// temprano: ocupan el día completo y no dejan margen para nada más.
+const tresLejanas = [{ zonaId: 'lejos', paradas: 4 }, { zonaId: 'sur', paradas: 4 }, { zonaId: 'este', paradas: 4 }];
+const temprano = simularSalida(tresLejanas, { salida: '08:00' });
+ok(temprano.entra && temprano.minutosSobrantes < 60,
+   `Chilca, sur y este entran saliendo a las 8, justo: retorna ${temprano.retorno}`);
+const tarde = simularSalida(tresLejanas, { salida: '10:00' });
+ok(!tarde.entra && tarde.minutosSobrantes < 0,
+   `la misma ruta saliendo a las 10 ya no entra: retornaría ${tarde.retorno}`);
+
+ok(simularSalida([], {}).vacia, 'una salida sin zonas no rompe el cálculo');
+ok(simularSalida(rutaBase, { salida: '08:00', sabado: true }).finJornada === '12:30',
+   'el sábado se mide contra el fin de jornada del sábado');
+ok(simularSalida(rutaBase, { salida: '08:00', minutosPorParada: 30 }).total > sim.total,
+   'subir los minutos por parada alarga la salida');
+ok(simularSalida(rutaBase, { salida: '08:00', desdePlanta: { norte: 90 } }).total > sim.total,
+   'editar el tiempo de una zona cambia el resultado');
+
+const alReves = [rutaBase[2], rutaBase[0], rutaBase[1]];
+ok(simularSalida(alReves, { salida: '08:00' }).total > sim.total,
+   'el orden de las zonas importa: al revés cuesta más');
+const mejorado = mejorOrden(alReves, { salida: '08:00' });
+ok(mejorado.mejora > 0, `reordenar ahorra ${mejorado.mejora} min`);
+ok(simularSalida(mejorado.orden, { salida: '08:00' }).total <= simularSalida(alReves, { salida: '08:00' }).total,
+   'el orden propuesto nunca es peor que el original');
+
+// ---------------------------------------- beneficios por fecha de ingreso
+console.log('\n-- gratificación y CTS según la fecha de ingreso --');
+ok(leerFecha('2026-10-01') && !leerFecha('no es fecha') && !leerFecha('2026-13-01'),
+   'la fecha se valida antes de calcular');
+ok(calendario('cualquier cosa', { base: 2100 }).valido === false,
+   'con una fecha inválida devuelve un calendario vacío en vez de romperse');
+
+const enero = calendario('2026-01-01', { base: 2100, personas: 1 }, 24);
+const julio26 = enero.filas.find(f => f.mes === 7 && f.anio === 2026);
+ok(cerca(julio26.gratificacion, 2100),
+   `entrando el 1 de enero, la gratificación de julio es un sueldo completo (${julio26.gratificacion.toFixed(2)})`);
+ok(cerca(julio26.bonificacion, 2100 * 0.09), 'encima va la bonificación extraordinaria del 9%');
+const mayo26 = enero.filas.find(f => f.mes === 5 && f.anio === 2026);
+ok(cerca(mayo26.cts, 2100 * 4 / 12),
+   `la CTS de mayo cubre solo 4 meses, no 6, porque entró en enero (${mayo26.cts.toFixed(2)})`);
+const nov26 = enero.filas.find(f => f.mes === 11 && f.anio === 2026);
+ok(cerca(nov26.cts, (2100 + 2100 / 6) * 6 / 12),
+   `la CTS de noviembre ya suma un sexto de la gratificación de julio (${nov26.cts.toFixed(2)})`);
+
+const octubre = calendario('2026-10-01', { base: 2100, personas: 1 }, 24);
+const dic26 = octubre.filas.find(f => f.mes === 12 && f.anio === 2026);
+ok(cerca(dic26.gratificacion, 2100 * 3 / 6),
+   `entrando en octubre, la gratificación de diciembre es de 3 de 6 meses (${dic26.gratificacion.toFixed(2)})`);
+ok(octubre.primerAnio.total < enero.primerAnio.total,
+   'el primer año de quien entra en octubre cuesta menos que el de quien entra en enero');
+
+const quincena = calendario('2026-09-15', { base: 2100, personas: 1 }, 24);
+ok(quincena.filas[0].diasDelMes === 16, 'entrando un 15, el primer mes se paga por 16 días');
+ok(quincena.filas[0].sueldo < 2100, 'y el sueldo de ese mes sale proporcional');
+const novQ = quincena.filas.find(f => f.mes === 11 && f.anio === 2026);
+ok(cerca(novQ.cts, 2100 * (1 / 12 + 16 / 360)),
+   `la CTS cuenta meses Y días: 1 mes y 16 días (${novQ.cts.toFixed(2)})`);
+
+const sinCts = calendario('2026-01-01', { base: 1050, personas: 2, conCts: false }, 24);
+ok(sinCts.filas.every(f => f.cts === 0), 'el part time bajo 4 h no genera CTS en ningún mes');
+ok(sinCts.filas.some(f => f.gratificacion > 0), 'pero sí genera gratificaciones');
+ok(cerca(sinCts.filas.find(f => f.mes === 7).gratificacion, 1050 * 2),
+   'con dos personas, la gratificación es la de ambas');
+
+ok(enero.filas.filter(f => f.gratificacion > 0).length === 4,
+   'en 24 meses caen 4 gratificaciones');
+ok(enero.filas.filter(f => f.cts > 0).length === 4, 'y 4 depósitos de CTS');
+ok(enero.primerAnio.mesMasCaro.mes === 7 || enero.primerAnio.mesMasCaro.mes === 12,
+   `el mes más caro del año es uno con gratificación (${enero.primerAnio.mesMasCaro.etiqueta})`);
 
 // --------------------------------------------------------------- demanda
 console.log('\n-- demanda real --');
@@ -154,6 +260,25 @@ ok(cmp.recomendacion.mejor, 'hay un escenario recomendado');
 ok(cmp.condiciones.length >= 3, 'se listan las condiciones que valen para cualquier escenario');
 ok(cmp.condiciones.some(c => /agrupan por zona/.test(c.titulo)), 'la primera condición es programar por zona');
 
+console.log('\n-- flujo real con fecha de ingreso --');
+ok(cmp.filas.every(f => f.flujo === null), 'sin fecha de ingreso no se inventa un flujo');
+const conFecha = comparar(esc, d, { inicio: '2026-10-01' });
+conFecha.filas.forEach(f => {
+  ok(f.flujo && f.flujo.meses.length === 24, `[${f.escenario.id}] proyecta 24 meses`);
+  ok(cerca(f.flujo.costoPrimerAnio, f.flujo.meses.slice(0, 12).reduce((a, m) => a + m.costo, 0)),
+     `[${f.escenario.id}] el costo del primer año es la suma de sus doce meses`);
+  ok(f.flujo.mesMasCaro.costo > f.flujo.mesMasBarato.costo,
+     `[${f.escenario.id}] hay meses que aprietan más que otros`);
+});
+const flotaConFecha = conFecha.filas.find(f => f.escenario.id === 'flota');
+ok(flotaConFecha.flujo.mesRecuperacion > 0,
+   `el retorno real de la inversión sale en ${flotaConFecha.flujo.mesRecuperacion} meses`);
+ok(conFecha.filas.filter(f => f.inversion === 0).every(f => f.flujo.mesRecuperacion === null),
+   'sin inversión no hay mes de recuperación');
+const enEnero = comparar(esc, d, { inicio: '2027-01-01' });
+ok(enEnero.filas[0].flujo.costoPrimerAnio !== conFecha.filas[0].flujo.costoPrimerAnio,
+   'cambiar la fecha de ingreso cambia el costo del primer año');
+
 // ------------------------------------------------------------ la pantalla
 console.log('\n-- pantalla --');
 const ids = ['pbCuerpo'];
@@ -187,11 +312,44 @@ ok(/Hora de corte diaria/.test(html), 'la primera medida es la hora de corte');
 MOTOS.forEach(m => ok(html.includes(m.modelo), `ofrece cotizar la ${m.modelo}`));
 ok(!/undefined|NaN|\[object/.test(html), 'no se cuela ningún undefined, NaN ni [object Object]');
 
+ok(/Simulador de una salida/.test(html), 'incluye el simulador de una salida');
+ok(/Sale de planta/.test(html) && /Vuelve a planta/.test(html), 'la cronología arranca y termina en planta');
+ok(/Beneficios sociales según la fecha de ingreso/.test(html), 'incluye el calendario de beneficios');
+ok(/id="pbInicio"/.test(html), 'deja elegir la fecha de ingreso');
+ok(/Ajustar los tiempos de viaje/.test(html), 'deja editar los tiempos de viaje');
+
 vista.setMotoPayback(MOTOS[2].id);
 ok(registro.get('pbCuerpo').innerHTML.includes(MOTOS[2].modelo), 'cambiar de moto vuelve a pintar con la elegida');
 vista.setBonoPayback('no');
 ok(/Condición de trabajo/.test(registro.get('pbCuerpo').innerHTML),
    'cambiar el tratamiento del bono se refleja en el desglose');
+
+console.log('\n-- controles del simulador --');
+const leer = () => registro.get('pbCuerpo').innerHTML;
+vista.pbReiniciarSimulador();
+const antes = leer();
+vista.pbAgregarParada();
+ok(leer() !== antes, 'agregar una zona repinta la pantalla');
+vista.pbCuantasParadas(0, 7);
+ok(/value="7"/.test(leer()), 'cambiar el número de entregas se refleja');
+vista.pbZonaParada(0, 'lejos');
+ok(/Fuera de Lima/.test(leer()), 'cambiar la zona de una parada se refleja');
+vista.pbHoraSalida('09:30');
+ok(/value="09:30"/.test(leer()), 'cambiar la hora de salida se refleja');
+vista.pbTiempoZona('norte', 99);
+ok(/99 min desde planta/.test(leer()), 'editar el tiempo de una zona se refleja en la lista');
+vista.pbDiaSimulado('sabado');
+ok(/12:30/.test(leer()), 'el sábado cambia el fin de jornada');
+vista.pbOrdenarMejor();
+ok(leer().length > 1000, 'ordenar por el camino más corto no rompe la pantalla');
+vista.pbQuitarParada(0);
+vista.pbReiniciarSimulador();
+ok(/value="08:00"/.test(leer()), 'reiniciar devuelve el simulador a su estado inicial');
+
+vista.setInicioPayback('2027-01-01');
+ok(/value="2027-01-01"/.test(leer()), 'cambiar la fecha de ingreso se refleja en el control');
+ok(/julio 2027|diciembre 2027/.test(leer()), 'y el calendario muestra los meses que corresponden');
+ok(!/undefined|NaN|\[object/.test(leer()), 'tras todos los cambios no se cuela ningún valor roto');
 
 console.log(fallos ? `\n${fallos} comprobación(es) fallaron` : '\nTodo en verde');
 process.exit(fallos ? 1 : 0);

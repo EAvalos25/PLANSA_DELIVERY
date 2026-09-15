@@ -625,3 +625,65 @@ svg{display:block;max-width:100%}
   .btn-payback{margin-left:8px}
   .pb-card h3{padding-right:0}
 }
+
+/* ---- Simulador de una salida ---- */
+.pb-sim-cabecera{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+.pb-sim-lista{display:grid;gap:8px}
+.pb-sim-fila{display:grid;grid-template-columns:28px 1fr 90px auto;gap:8px;align-items:center}
+.pb-sim-n{
+  width:26px;height:26px;border-radius:50%;display:grid;place-items:center;
+  background:var(--surface3);color:var(--muted);font-family:var(--mono);font-size:12px;font-weight:700;
+}
+.pb-sim-cant{text-align:center;font-family:var(--mono)}
+
+.pb-sim-resultado{border-radius:9px;padding:14px 16px;margin:16px 0;border:1px solid}
+.pb-sim-resultado.bien{background:var(--ok-soft);border-color:var(--ok-line)}
+.pb-sim-resultado.mal{background:var(--warn-soft);border-color:var(--warn-line)}
+.pb-sim-veredicto{font-size:14px;font-weight:600;margin-bottom:12px}
+.pb-sim-resultado.bien .pb-sim-veredicto{color:var(--ok)}
+.pb-sim-resultado.mal .pb-sim-veredicto{color:var(--warn)}
+.pb-sim-cifras{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:12px}
+.pb-sim-cifras b{display:block;font-family:var(--mono);font-size:16px;font-weight:600;letter-spacing:-.4px}
+.pb-sim-cifras span{font-size:11.5px;color:var(--muted)}
+.pb-sim-tip{margin-top:12px;padding-top:11px;border-top:1px solid var(--line-soft);font-size:12.5px;color:var(--muted)}
+
+/* Cronología de la salida */
+.pb-crono{display:grid;gap:0;margin-top:4px}
+.pb-crono-hito{display:grid;grid-template-columns:52px 16px 1fr;align-items:center;gap:8px;min-height:30px;font-size:12.5px}
+.pb-crono-hora{font-family:var(--mono);font-size:12px;color:var(--muted2);text-align:right}
+.pb-crono-punto{
+  position:relative;width:9px;height:9px;border-radius:50%;
+  background:var(--surface3);border:2px solid var(--line);justify-self:center;
+}
+.pb-crono-punto::after{content:"";position:absolute;left:50%;top:9px;width:2px;height:22px;background:var(--line);transform:translateX(-50%)}
+.pb-crono-hito:last-child .pb-crono-punto::after{display:none}
+.pb-crono-punto.salida{background:var(--primary);border-color:var(--primary)}
+.pb-crono-punto.fin{background:var(--ok);border-color:var(--ok)}
+.pb-crono-punto.tarde{background:var(--danger);border-color:var(--danger)}
+.pb-crono-hito.viaje span:last-child{color:var(--muted)}
+.pb-crono-hito i{font-style:normal;font-family:var(--mono);font-size:11px;color:var(--muted2);margin-left:8px}
+
+.pb-tiempos{margin-top:18px;border-top:1px solid var(--line-soft);padding-top:14px}
+.pb-tiempos summary{font-size:13px;font-weight:600;color:var(--primary);cursor:pointer}
+.pb-tiempos-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.pb-tiempo{display:grid;grid-template-columns:1fr 84px;gap:8px;align-items:center;font-size:12.5px}
+.pb-tiempo input{text-align:center;font-family:var(--mono)}
+
+/* ---- Calendario de beneficios sociales ---- */
+.pb-cal-controles{display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap}
+.pb-cal-atajos{display:flex;gap:7px;flex-wrap:wrap;padding-bottom:2px}
+.pb-cal-hito td{background:var(--primary-soft)}
+.pb-barra{display:block;height:4px;background:var(--surface3);border-radius:3px;margin-top:4px;overflow:hidden}
+.pb-barra i{display:block;height:100%;background:var(--chart-1)}
+.pb-verde{color:var(--ok);font-weight:600}
+.pb-rojo{color:var(--danger)}
+.pb-cal-notas{margin-top:14px;display:grid;gap:6px;font-size:12px;color:var(--muted)}
+.pb-cal-notas b{color:var(--text)}
+
+@media(max-width:640px){
+  .pb-sim-fila{grid-template-columns:24px 1fr;grid-template-areas:"n zona" ". cant" ". quitar"}
+  .pb-sim-fila .pb-sim-n{grid-area:n}
+  .pb-sim-fila select{grid-area:zona}
+  .pb-sim-cant{grid-area:cant;width:100%}
+  .pb-sim-fila button{grid-area:quitar;justify-self:start}
+}

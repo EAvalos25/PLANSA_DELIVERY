@@ -16,8 +16,9 @@ payback/
   data/        Los supuestos. Todo lo que se discute con RR.HH., Finanzas
                o un proveedor vive aquí, y se cambia sin tocar el cálculo.
     parametros.js   jornada, tasas de ley, costos de flota, los 3 escenarios
-    motos.js        las 3 opciones de 150 cc a cotizar
-    zonas.js        mapa de distritos, tiempos de viaje y días de ruta
+    motos.js        las 3 opciones de 150 cc a cotizar (US$ 2 500 a 5 000)
+    zonas.js        distritos, minutos desde planta y días de ruta
+    tiempos.js      matriz de minutos entre zonas, sin pasar por planta
 
   backend/     El cálculo. Funciones puras, sin DOM y sin base de datos:
                entra una configuración, sale un número. Se corre en Node.
@@ -25,11 +26,15 @@ payback/
     flota.js        inversión y gasto mensual de una moto propia
     demanda.js      lo que pasa hoy, leído del histórico de servicios
     capacidad.js    minutos de ruta que exige la demanda contra los disponibles
+    ruta.js         simula UNA salida concreta: orden, paradas y retorno
+    devengos.js     gratificación y CTS mes a mes según la fecha de ingreso
     escenarios.js   arma los tres escenarios completos
     payback.js      compara contra el courier y calcula el retorno
 
   frontend/    La pantalla. Única capa que toca el DOM.
-    vista.js
+    vista.js        arma la pantalla y orquesta las secciones
+    simulador.js    el simulador editable de una salida
+    calendario.js   el calendario de beneficios por fecha de ingreso
 
   test/
     pruebas.mjs     node payback/test/pruebas.mjs
@@ -60,19 +65,23 @@ está incompleto; incluirlo haría parecer que se gasta menos.
 ### Los tres escenarios
 
 Con el bono tratado como remunerativo (el supuesto conservador) y la Honda XR
-150 L a US$ 4 500 de referencia:
+150 L a US$ 2 900 de referencia:
 
 | | Escenario 1<br>moto propia del trabajador | Escenario 2<br>moto de la empresa | Escenario 3<br>dos part time |
 |---|---:|---:|---:|
 | Planilla total | 2 948 | 2 527 | 2 744 |
-| Gasto de moto | — | 756 | — |
+| Gasto de moto | — | 681 | — |
 | Cobertura de vacaciones | 430 | 430 | 86 |
 | Courier para días cargados | 465 | 465 | 465 |
-| **Costo mensual** | **3 844** | **4 179** | **3 296** |
-| **Ahorro frente al courier** | **1 103** | **768** | **1 651** |
-| Ahorro al año | 13 236 | 9 215 | 19 815 |
-| Inversión inicial | — | 18 025 | — |
-| Retorno de la inversión | — | 23,5 meses | — |
+| **Costo mensual** | **3 844** | **4 104** | **3 296** |
+| **Ahorro frente al courier** | **1 103** | **843** | **1 651** |
+| Ahorro al año | 13 236 | 10 117 | 19 815 |
+| Inversión inicial | — | 12 025 | — |
+| Retorno de la inversión | — | 12 meses | — |
+
+El retorno de 12 meses no sale de dividir inversión entre ahorro promedio: sale
+de recorrer el flujo real mes a mes desde la fecha de ingreso, que es lo que se
+explica más abajo.
 
 Los tres salen más baratos que tercerizar. El tercero es el más barato y el
 único sin riesgo alto.
@@ -117,6 +126,25 @@ encargos a Lima norte en una salida caben; cuatro encargos a cuatro zonas
 distintas, no. La programación no es una mejora deseable: es la condición para
 que esto exista.
 
+**El simulador de salida** lleva esto al caso concreto. Se arma la ruta como se
+armaría mañana —qué zonas, en qué orden, cuántas entregas en cada una, a qué
+hora se sale— y devuelve la cronología minuto a minuto: cuándo llega a cada
+zona, cuánto tarda en los puntos, a qué hora vuelve a planta y cuánto margen
+queda antes del fin de jornada.
+
+Sirve para dos cosas que el promedio semanal no puede responder:
+
+- **El orden importa.** Norte → centro → moderna toma 4 h 49 min; las mismas
+  ocho entregas empezando por moderna toman 27 minutos más. El botón de ordenar
+  prueba todas las combinaciones y se queda con la más corta.
+- **La hora de salida importa.** Doce entregas repartidas en Chilca, Lima sur y
+  Lima este entran saliendo a las 8:00, con menos de una hora de margen; la
+  misma ruta saliendo a las 10:00 ya no entra.
+
+Los minutos de viaje se editan en la misma pantalla, sin tocar código: son el
+supuesto que más mueve el resultado y conviene corregirlos con lo que se mida
+en la calle.
+
 ### 3. El día cargado se desborda, y está previsto
 
 El promedio es 8,7, pero el 10% de los días pasa de 12 y hubo días de 20. Con 12
@@ -126,6 +154,40 @@ courier, y por eso hay una línea de S/ 465 al mes en los tres escenarios.
 Dimensionar para el pico exigiría un segundo motorizado permanente, que costaría
 más de lo que ahorra. Dimensionar para el promedio y derivar el pico es lo
 correcto.
+
+---
+
+## Cuándo entra el motorizado, y por qué cambia el costo
+
+La gratificación es **un sueldo completo por semestre entero**, y proporcional
+si se trabajó menos: un sexto de sueldo por cada mes completo. Se paga en julio
+(por el semestre enero-junio) y en diciembre (por julio-diciembre). La CTS se
+deposita en mayo y noviembre, y su base no es solo el sueldo: es el sueldo más
+un sexto de la última gratificación recibida.
+
+Eso hace que el primer año dependa mucho de la fecha de ingreso, y el módulo lo
+calcula solo. Poniendo la fecha, la tabla muestra mes por mes qué se paga:
+
+| Ingreso | Costo del primer año | Retorno de la inversión (escenario 2) |
+|---|---:|---:|
+| 1 de octubre de 2026 | S/ 47 293 | 12 meses |
+| 1 de enero de 2027 | S/ 48 799 | 14 meses |
+
+Entrar en octubre sale más barato el primer año porque no se alcanza la
+gratificación de julio y la de diciembre se cobra a medias (3 de 6 meses). No es
+un ahorro real —se paga igual el año siguiente—, pero sí cambia la caja del
+primer año y el momento en que la inversión se recupera.
+
+Dos detalles que la tabla deja ver y que suelen olvidarse:
+
+- El **primer depósito de CTS** de quien acaba de entrar sale más bajo de lo que
+  saldrá después, porque todavía no hay gratificación previa que sumar a la
+  base.
+- **Julio y diciembre cuestan casi el doble** que un mes normal. Conviene que
+  Finanzas lo tenga en el presupuesto y no lo descubra en la planilla.
+
+El part time del escenario 3 no genera CTS, así que su calendario solo tiene los
+dos hitos de gratificación.
 
 ---
 
@@ -168,15 +230,15 @@ en el código:
 - **Las tasas de ley** son las del régimen laboral común del sector privado. Las
   primas de Vida Ley y SCTR varían por aseguradora y por clasificación de
   riesgo. Que RR.HH. y contabilidad las validen antes de firmar nada.
-- **Los precios de las motos** son marcadores de posición dentro del rango
-  indicado (US$ 4 500 a 6 000), no cotizaciones. En el mercado peruano una
-  150 cc de trabajo se mueve bastante por debajo de ese rango; si el precio real
-  resulta menor, el escenario 2 mejora y su retorno se acorta.
-- **Los minutos de viaje por zona** son estimaciones de tráfico de día
-  laborable. El primer mes de operación real los corrige.
+- **Los precios de las motos** son referenciales dentro del rango de mercado
+  (US$ 2 500 a 5 000), no cotizaciones firmes. Es lo que más mueve el plazo de
+  retorno del escenario 2.
+- **Los minutos de viaje** —desde planta y entre zonas— son estimaciones de
+  tráfico de día laborable, calibradas para una planta en Lima norte. Se editan
+  en el propio simulador, y el primer mes de operación real los corrige.
 
-Todo eso se edita en `data/parametros.js`, `data/motos.js` y `data/zonas.js`.
-El cálculo no se toca.
+Todo eso se edita en `data/parametros.js`, `data/motos.js`, `data/zonas.js` y
+`data/tiempos.js`. El cálculo no se toca.
 
 Dos puntos legales que el módulo verifica y avisa en pantalla:
 

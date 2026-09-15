@@ -85,17 +85,22 @@ payback/                     ← MÓDULO PAYBACK (análisis de motorizado propio
   README.md                  El análisis escrito, con las cifras y la conclusión
   data/                      Los supuestos: se editan sin tocar el cálculo
     parametros.js             Jornada, tasas de ley, costos de flota, escenarios
-    motos.js                  Las 3 opciones de 150 cc a cotizar
-    zonas.js                  Distritos, tiempos de viaje y días de ruta
+    motos.js                  Las 3 opciones de 150 cc (US$ 2 500 a 5 000)
+    zonas.js                  Distritos, minutos desde planta y días de ruta
+    tiempos.js                Matriz de minutos entre zonas, sin pasar por planta
   backend/                   Cálculo puro, sin DOM: se corre y se verifica en Node
     planilla.js               Costo laboral por persona + avisos legales
     flota.js                  Inversión y gasto mensual de una moto propia
     demanda.js                Lo que pasa hoy, leído del histórico de servicios
     capacidad.js              Minutos de ruta que exige la demanda
+    ruta.js                   Simula UNA salida: orden, paradas y retorno
+    devengos.js               Gratificación y CTS según la fecha de ingreso
     escenarios.js             Arma los tres escenarios completos
     payback.js                Compara contra el courier y calcula el retorno
-  frontend/
-    vista.js                  La pantalla; única capa que toca el DOM
+  frontend/                  La pantalla; única capa que toca el DOM
+    vista.js                  Arma la pantalla y orquesta las secciones
+    simulador.js              Simulador editable de una salida
+    calendario.js             Calendario de beneficios por fecha de ingreso
   test/
     pruebas.mjs               node payback/test/pruebas.mjs
 ```

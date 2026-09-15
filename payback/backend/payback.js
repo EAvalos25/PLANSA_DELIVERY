@@ -1,4 +1,5 @@
 import { JORNADA } from '../data/parametros.js';
+import { calendario } from './devengos.js';
 
 /**
  * Compara cada escenario contra lo que se gasta hoy en courier y calcula en
@@ -16,8 +17,12 @@ const DIAS_LABORABLES_AL_MES = JORNADA.diasSemanaAlMes + JORNADA.sabadosAlMes;
 /**
  * @param {Array} escenarios  salida de escenarios.js
  * @param {object} demanda    salida de demanda.js
+ * @param {object} [opciones]
+ * @param {string} [opciones.inicio]  fecha de ingreso 'AAAA-MM-DD'; si viene, el
+ *                                    retorno se calcula sobre el flujo real mes
+ *                                    a mes en vez de sobre un promedio parejo
  */
-export function comparar(escenarios, demanda) {
+export function comparar(escenarios, demanda, opciones = {}) {
   const gastoActual = demanda.recientes.gastoMensual;
   const costoPorViaje = demanda.recientes.costoPorViaje;
   const viajesPorDia = demanda.viajesPorDia.entreSemana || demanda.viajesPorDia.promedio;
@@ -44,9 +49,23 @@ export function comparar(escenarios, demanda) {
       ? (ahorroMensual > 0 ? inversion / ahorroMensual : null)
       : 0;
 
+    // Con fecha de ingreso, el flujo real: las gratificaciones y la CTS caen en
+    // meses concretos y el primer año casi nunca se pagan completas.
+    const otrosMensuales = gastoMoto + coberturaVacaciones + courierResidual;
+    const cal = opciones.inicio
+      ? calendario(opciones.inicio, {
+          base: e.persona.base,
+          personas: e.cfg.personas,
+          conCts: e.cfg.jornadaCompleta
+        }, 24)
+      : { valido: false };
+    const flujo = cal.valido ? construirFlujo(cal, e, otrosMensuales, gastoActual, inversion) : null;
+
     return {
       escenario: e,
       excedenteDiario,
+      calendario: cal,
+      flujo,
       planilla: e.planilla,
       gastoMoto,
       coberturaVacaciones,
@@ -69,6 +88,45 @@ export function comparar(escenarios, demanda) {
     filas,
     condiciones: condiciones(filas, demanda),
     recomendacion: recomendar(filas)
+  };
+}
+
+/**
+ * Flujo mes a mes del primer par de años: lo que de verdad sale de caja.
+ *
+ * El promedio parejo sirve para comparar escenarios entre sí; este flujo sirve
+ * para saber cuándo se recupera la inversión y qué meses aprietan. No son lo
+ * mismo: diciembre, con gratificación, cuesta casi el doble que agosto.
+ */
+function construirFlujo(cal, e, otrosMensuales, gastoActual, inversion) {
+  const fuera = e.persona.bonoFueraDePlanilla * e.cfg.personas;
+  let acumulado = -inversion;
+  let mesRecuperacion = null;
+
+  const meses = cal.filas.map(f => {
+    const costo = f.total + fuera + otrosMensuales;
+    const ahorro = gastoActual - costo;
+    acumulado += ahorro;
+    if (mesRecuperacion === null && inversion > 0 && acumulado >= 0) mesRecuperacion = f.i + 1;
+    return {
+      ...f,
+      otros: otrosMensuales,
+      bonoFueraDePlanilla: fuera,
+      costo,
+      ahorro,
+      acumulado
+    };
+  });
+
+  const doce = meses.slice(0, 12);
+  return {
+    meses,
+    costoPrimerAnio: doce.reduce((a, m) => a + m.costo, 0),
+    ahorroPrimerAnio: doce.reduce((a, m) => a + m.ahorro, 0),
+    /** Meses hasta recuperar la inversión, contando el flujo real. */
+    mesRecuperacion,
+    mesMasCaro: doce.slice().sort((a, b) => b.costo - a.costo)[0],
+    mesMasBarato: doce.slice().sort((a, b) => a.costo - b.costo)[0]
   };
 }
 
