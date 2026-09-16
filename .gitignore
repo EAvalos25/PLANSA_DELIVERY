@@ -1,4 +1,12 @@
 node_modules/
+
+# Base de datos y archivos subidos: son estado de cada instalación, no código.
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+uploads/*
+!uploads/.gitkeep
+
 .DS_Store
 Thumbs.db
 *.log

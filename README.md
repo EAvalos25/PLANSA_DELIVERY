@@ -1,212 +1,218 @@
-# Plásticos Nacionales · Mensajería y Encargos
+# PLANSA Delivery
 
-Registro y trazabilidad de mensajería, entrega de documentos y recojo de
-paquetes para las sedes de Plásticos Nacionales. Aplicación web sin
-dependencias ni build: HTML + CSS + JavaScript con módulos ES nativos.
+Mensajería y encargos de Plásticos Nacionales: registro de solicitudes,
+trazabilidad del despacho, guías de entrega e indicadores de costo.
 
-## Uso
+Aplicación Node.js + SQLite. El navegador no guarda nada: la verdad vive en el
+servidor, así que lo que registra una persona lo ve el resto al instante, desde
+cualquier PC de la red.
 
-Sirve la carpeta con cualquier servidor estático (los módulos ES no cargan
-vía `file://`) y abre `index.html`. Por ejemplo:
+---
 
-```powershell
-# con Python
-python -m http.server 8080
-# o con Node (npx)
-npx serve .
+## Arrancar
+
+```bash
+npm install     # solo la primera vez
+npm start       # http://localhost:3000
 ```
 
-Luego visita `http://localhost:8080`.
+La primera vez se crea `plansa.sqlite` y se siembra con el padrón de RR.HH.
+(212 personas) y el histórico real de 2026 (1 386 servicios, S/ 30 264,60).
 
-- **Acceso solicitante:** ingresa con un DNI del padrón de RR.HH.
-  (ver `js/db/padron.js`), por ejemplo `73012556`.
-- **Acceso logística:** la clave inicial es `logistica`. No se muestra en
-  ninguna pantalla: para cambiarla hay que entrar con ella y usar la pestaña
-  *Padrón y accesos*.
-
-## Apariencia
-
-- El **tema claro es el predeterminado**; el botón de la cabecera cambia a
-  modo oscuro y la preferencia queda guardada en el navegador.
-- La paleta sale del logo: azul `#1B4E8E` y verde `#2FA84F`. Los estados
-  (en espera / en tránsito / concluido / error) tienen su propia familia de
-  colores para que se distingan sin depender de la marca.
-- Todo el color vive en variables CSS al inicio de `css/styles.css`: se
-  cambia la marca completa editando ese bloque.
-- El logo es un SVG dibujado en el propio `index.html` (no depende de
-  ningún archivo de imagen). Si prefieres el archivo original de la marca,
-  reemplaza ese `<svg class="brand-logo">` por un `<img>`.
-
-## Estructura del proyecto
-
-```
-index.html                  Marcado de las 3 vistas (login, solicitante, logística)
-css/
-  styles.css                 Hoja de estilos única (tokens de color claro/oscuro)
-js/                          ← LA APLICACIÓN DE MENSAJERÍA
-  config.js                  Constantes (clave de storage, ventana horaria, margen)
-  auth.js                    Login por DNI/PIN, autorizaciones, apertura de vistas
-  render.js                  Orquestador: repinta lo que corresponde a la sesión
-  main.js                    Punto de entrada: arranque, listeners y puente window.*
-  db/                        ← BASE DE DATOS
-    index.js                  API: DB, cargar(), guardar(), sincronizar()
-    schema.js                 Forma de cada colección + versión + migraciones
-    padron.js                 Padrón real de RR.HH. + normalización del documento
-    destinos.js               Destinos frecuentes unificados + tarifa de referencia
-    historico.js              Los 1 386 servicios de 2026 con su costo
-    seed.js                   Estado inicial: padrón + histórico, sin datos inventados
-    adapters/
-      localStorageAdapter.js   Implementación actual + contrato para migrar a nube
-  storage/                   ← ARCHIVOS (guías de entrega)
-    index.js                  API: subir(), adjuntosDe(), eliminar(), urlDe()
-    adapters/
-      indexedDbAdapter.js      Implementación actual + contrato para migrar a nube
-  state/
-    sessionState.js            Sesión activa (usuario o logística)
-  ui/
-    themeBoot.js               Script clásico: aplica el tema antes del primer pintado
-    theme.js                   Conmutador claro/oscuro
-  utils/
-    dom.js                     $ (getElementById), esc, marcar (validación)
-    format.js                  Fechas, horas, soles, textos cortos
-    toast.js                   Notificaciones flotantes
-  views/
-    tabs.js                    Navegación por pestañas
-    requestForm.js             Formulario de nueva solicitud
-    tickets.js                 Seguimiento de ticket y "mis servicios"
-    presenters.js              Helpers de presentación compartidos
-    dispatch.js                Bandeja de despacho y modal de gestión
-    attachments.js             Guía / documento de entrega por viaje
-    history.js                 Histórico filtrable y exportación a CSV
-    kpi.js                     Indicadores y gráficos
-    roster.js                  Padrón de personal y autorizaciones
-
-payback/                     ← MÓDULO PAYBACK (análisis de motorizado propio)
-  README.md                  El análisis escrito, con las cifras y la conclusión
-  data/                      Los supuestos: se editan sin tocar el cálculo
-    parametros.js             Jornada, tasas de ley, costos de flota, escenarios
-    motos.js                  Las 3 opciones de 150 cc (US$ 2 500 a 5 000)
-    zonas.js                  Distritos, minutos desde planta y días de ruta
-    tiempos.js                Matriz de minutos entre zonas, sin pasar por planta
-  backend/                   Cálculo puro, sin DOM: se corre y se verifica en Node
-    planilla.js               Costo laboral por persona + avisos legales
-    flota.js                  Inversión y gasto mensual de una moto propia
-    demanda.js                Lo que pasa hoy, leído del histórico de servicios
-    capacidad.js              Minutos de ruta que exige la demanda
-    ruta.js                   Simula UNA salida: orden, paradas y retorno
-    devengos.js               Gratificación y CTS según la fecha de ingreso
-    escenarios.js             Arma los tres escenarios completos
-    payback.js                Compara contra el courier y calcula el retorno
-  frontend/                  La pantalla; única capa que toca el DOM
-    vista.js                  Arma la pantalla y orquesta las secciones
-    simulador.js              Simulador editable de una salida
-    calendario.js             Calendario de beneficios por fecha de ingreso
-  test/
-    pruebas.mjs               node payback/test/pruebas.mjs
+```bash
+npm run dev            # recarga al guardar
+npm test               # las tres suites de pruebas
+npm run db:reiniciar   # vacía y vuelve a sembrar la base
 ```
 
-Cada módulo tiene una responsabilidad única. La única dependencia circular
-intencional es `render.js` ↔ `views/dispatch.js`: es segura porque las
-funciones involucradas solo se invocan desde manejadores de eventos, nunca
-durante la carga del módulo (está documentada en el código).
+Para mover la base o las subidas a un disco de red:
 
-## Guía de entrega por viaje
+```bash
+PLANSA_PUERTO=8080 PLANSA_DB=D:/datos/plansa.sqlite PLANSA_UPLOADS=D:/datos/guias npm start
+```
 
-Logística adjunta una **imagen o PDF** a cada servicio desde el botón
-*Gestionar* de la bandeja. El solicitante ve esos documentos (sin poder
-modificarlos) en su tarjeta de ticket, y la bandeja muestra un contador de
-adjuntos por fila.
+- **Acceso solicitante:** con un DNI del padrón, por ejemplo `73012556`.
+- **Acceso logística:** clave inicial `logistica`. Se verifica en el servidor y
+  nunca se envía al navegador. Para cambiarla hay que conocer la vigente.
 
-Hoy los archivos se guardan en **IndexedDB del navegador** (soporta fotos y
-PDF de varios MB, a diferencia de localStorage). Límite por archivo: 15 MB.
+---
 
-> **Importante:** IndexedDB es local a cada equipo y navegador. Los adjuntos
-> subidos en la PC de logística no se ven desde otra PC. Para compartirlos de
-> verdad hace falta una nube: ver la sección siguiente.
+## Estructura
 
-El arranque de la app **nunca depende** del almacenamiento de archivos: si
-IndexedDB está bloqueado o no responde, la app de despacho funciona igual y
-solo se avisa que los adjuntos no persistirán.
+```
+server.js                    Punto de entrada: arranca el servidor
 
-## Cómo migrar a una nube real
+backend/                     ← NODE.JS. Nada de esto llega al navegador.
+  servidor.js                 Express: API, estáticos, apagado ordenado
+  config.js                   Puerto, rutas y límites; todo por variable de entorno
+  db/
+    esquema.sql               DDL de las tablas: la forma de los datos
+    conexion.js               SQLite (node:sqlite), transacciones, snake_case ↔ camelCase
+    sembrar.js                Carga inicial: padrón + histórico 2026
+    repos/                    Único sitio del proyecto que escribe SQL
+      personal.js              padrón y búsqueda
+      solicitudes.js           tickets, correlativo y flujo de estados
+      autorizaciones.js        pedidos de acceso
+      adjuntos.js              metadatos de las guías
+      ajustes.js               clave de logística y testigo de revisión
+  middleware/
+    subida.js                 multer → uploads/, renombrado único
+    errores.js                Formato uniforme de errores
+  rutas/
+    index.js                  La API REST completa
 
-Igual que los archivos, **los datos también son locales a cada navegador**:
-hoy cada PC tiene su propia base. Para que logística y los solicitantes
-compartan la misma información hace falta un servicio real (Firebase,
-Supabase, o una API propia).
+frontend/                    ← NAVEGADOR
+  index.html                  Marcado de las vistas + import map
+  css/styles.css              Hoja de estilos única (claro/oscuro)
+  js/
+    main.js                   Arranque, listeners y puente window.*
+    auth.js                   Ingreso por DNI / clave, apertura de vistas
+    render.js                 Orquestador de repintado y sondeo
+    config.js                 Constantes de la interfaz
+    api/                      ← Lo único que habla con el servidor
+      cliente.js               fetch, errores, URL base
+      estado.js                Copia local del estado + escrituras
+      adjuntos.js              Subida y descarga de guías
+    state/ ui/ utils/          Sesión, tema y utilidades
+    views/                     Una vista por pestaña
+      payback/                 Pantalla del análisis payback
 
-Todo el proyecto está preparado para ese cambio: el resto del código no sabe
-dónde viven los datos ni los archivos. Para migrar:
+shared/                      ← CÁLCULO PURO. Lo usan el servidor Y el navegador.
+  payback/                    Sin DOM, sin base de datos, sin red: se verifica
+    planilla.js               en Node número por número.
+    flota.js  demanda.js  capacidad.js  ruta.js  devengos.js
+    escenarios.js  payback.js
 
-1. **Base de datos** — crea `js/db/adapters/miNubeAdapter.js` que exporte
-   `leer()`, `escribir(texto)` y `leerSincrono()` (contrato documentado en
-   `localStorageAdapter.js`) y cambia el único `import` de `js/db/index.js`.
-2. **Archivos** — crea `js/storage/adapters/miNubeAdapter.js` que exporte
-   `guardar()`, `listarMetadatos()`, `leer()` y `eliminar()` (contrato
-   documentado en `indexedDbAdapter.js`) y cambia el `import` de
-   `js/storage/index.js`.
+data/                        ← DATOS DE REFERENCIA (código versionado)
+  padron.js                   Las 212 personas de RR.HH.
+  destinos.js                 Destinos frecuentes + tarifa de referencia
+  historico.js                Los 1 386 servicios de 2026
+  payback/                    Supuestos del análisis: jornada, ley, motos, zonas
 
-Ningún otro archivo del proyecto se toca. `cargar()` ya es asíncrona
-justamente para que un adaptador de red entre sin cambios en quien la llama.
+uploads/                     ← Guías de entrega subidas (fuera de git)
+plansa.sqlite                ← La base (fuera de git)
+tests/                       node tests/payback.mjs · api.mjs · frontend.mjs
+docs/payback.md              El análisis payback, escrito
+```
 
-## Puente hacia el HTML (`window.*`)
+### Por qué `shared/` existe
 
-El marcado usa atributos `onclick`/`onchange`/`oninput` (incluida la tabla de
-la bandeja y las tarjetas, generadas dinámicamente). Como los módulos ES no
-son globales, `js/main.js` expone explícitamente en `window` solo las
-funciones que el HTML necesita invocar así. Es la única "superficie pública"
-de la app: si agregas un botón inline nuevo, expórtalo desde su módulo y
-súmalo ahí.
+El cálculo del payback es aritmética pura: no toca el DOM, ni la base, ni la
+red. Ponerlo en `backend/` obligaría al navegador a pedir por HTTP cada cambio
+del simulador de rutas; ponerlo en `frontend/` dejaría a la API sin poder
+calcular. Está en medio, y lo importan los dos con el mismo especificador:
 
-**Próximo paso sugerido:** migrar esos atributos inline a delegación de
-eventos (`addEventListener` sobre contenedores, leyendo `data-*`). Elimina la
-dependencia de `window.*`, aunque no hace falta para que la app funcione.
+```js
+import { comparar } from '#shared/payback/payback.js';
+```
+
+En Node lo resuelve el campo `imports` de `package.json`; en el navegador, el
+`<script type="importmap">` de `index.html`. Un solo archivo en disco, dos
+formas de encontrarlo, cero duplicación.
+
+---
+
+## La base de datos
+
+SQLite, en un solo archivo, con `node:sqlite` incorporado en Node 22.5+. Sin
+dependencias nativas que compilar, que en Windows sin herramientas de build es
+la diferencia entre funcionar y no.
+
+Cinco tablas —`personal`, `solicitudes`, `autorizaciones`, `adjuntos`,
+`ajustes`— definidas en `backend/db/esquema.sql`. Las reglas viven en la base,
+no solo en el código: un estado que no existe o una tarifa negativa los rechaza
+SQLite con un CHECK, aunque el bug esté en la pantalla.
+
+Todo el SQL está en `backend/db/repos/`. Ninguna ruta, ninguna vista y ningún
+cálculo escriben una consulta: si mañana esto se muda a PostgreSQL, se
+reescriben esos cinco archivos y nada más.
+
+### Sincronización entre pestañas
+
+Cada escritura mueve un testigo de revisión. El navegador sondea solo ese valor
+—unos bytes— y recarga el estado completo únicamente cuando cambió de verdad.
+Sin eso, con el histórico cargado, sondear cada dos segundos sería descargar
+cientos de KB una y otra vez.
+
+---
+
+## Archivos y fotos
+
+Las guías de entrega se suben con **multer** a `uploads/`. El nombre que manda
+el usuario no se usa nunca como nombre en disco:
+
+```
+20260915-143012-a3f9c1-guia-de-entrega.jpg
+│        │      │      │                └── extensión derivada del tipo declarado
+│        │      │      └── nombre original saneado (sin tildes, sin espacios)
+│        │      └── 6 caracteres al azar
+│        └── hora
+└── fecha
+```
+
+La marca de tiempo va primero para que la carpeta se ordene sola, y lleva azar
+porque dos subidas en el mismo segundo son perfectamente posibles: el timestamp
+por sí solo no garantiza unicidad. Construir el nombre desde cero también cierra
+la puerta a un `../../backend/servidor.js` como nombre de archivo.
+
+`uploads/` **no** se publica como carpeta estática. Los archivos se sirven por
+`GET /api/adjuntos/:id/archivo`, que comprueba que el adjunto exista en la base;
+exponer la carpeta permitiría listarla y adivinar nombres.
+
+---
+
+## La API
+
+| | |
+|---|---|
+| `GET /api/estado` | Todo lo que la pantalla necesita, en una llamada |
+| `GET /api/revision` | El testigo, para el sondeo |
+| `POST /api/auth/logistica` | Verifica la clave (en el servidor) |
+| `GET /api/auth/solicitante/:doc` | Busca un DNI en el padrón |
+| `GET /api/personal?q=` | Busca en el padrón; sin `q` no devuelve nada |
+| `POST/DELETE /api/personal` | Alta y baja manual |
+| `GET/POST /api/solicitudes` | Listar y registrar |
+| `PATCH /api/solicitudes/:id` | Transporte y tarifa |
+| `POST /api/solicitudes/:id/avanzar` | Mueve el ticket por el flujo |
+| `GET/POST/DELETE /api/adjuntos` | Guías de entrega |
+| `GET /api/adjuntos/:id/archivo` | Descarga el binario |
+| `PUT /api/ajustes/clave` | Cambia la clave (pidiendo la vigente) |
+| `GET /api/payback` | El análisis completo, en JSON |
+| `GET /api/salud` | Estado del servidor y de la base |
+
+Las validaciones están en el servidor, no solo en la pantalla: sin transporte no
+hay salida, sin tarifa no hay cierre, y un ticket concluido ya no se modifica.
+Confiar en que el navegador lo valide deja la puerta abierta a que un ticket se
+cierre sin costo y los indicadores mientan.
+
+---
 
 ## Datos y producción
 
-- El padrón (`js/db/padron.js`) son las 212 personas del listado de RR.HH.
-  Para actualizarlo, reemplaza esa lista y **sube `VERSION` en
-  `js/db/schema.js`**: así las bases ya guardadas en los navegadores adoptan
-  el padrón nuevo en el siguiente ingreso. Las altas hechas a mano desde la
-  pestaña *Padrón y accesos* (marcadas con `origen: 'manual'`) sobreviven.
+- **El padrón** (`data/padron.js`) son las 212 personas de RR.HH. Para
+  actualizarlo se reemplaza esa lista y se corre `npm run db:reiniciar`. Las
+  altas manuales de logística (`origen: 'manual'`) sobreviven a la recarga.
 - **Documento de identidad.** Se guarda siempre en forma canónica: los DNI de
-  7 dígitos (el sistema de RR.HH. recorta el cero inicial) se completan a 8,
-  así la persona entra escriba `8161848` o `08161848`. Los documentos de
-  9 dígitos son carnés de extranjería y se respetan tal cual.
+  7 dígitos, que el sistema de RR.HH. entrega sin el cero inicial, se completan
+  a 8. La persona entra escriba `8161848` o `08161848`. Los de 9 dígitos son
+  carnés de extranjería y se respetan tal cual.
 - **El padrón no se lista en pantalla.** Son datos personales de todo el
-  personal: la tabla de *Padrón y accesos* aparece vacía y solo muestra las
-  fichas que logística busca por documento, apellido o nombre. La búsqueda
-  ignora tildes y admite las palabras en cualquier orden.
-- **Sede.** No se guarda por persona. La sede de salida se elige en cada
-  solicitud, que es donde realmente cambia.
-- **Nada de datos inventados.** La base arranca con el padrón de RR.HH. y con
-  los **1 386 servicios reales de 2026** (`js/db/historico.js`, del 15/01 al
-  19/08, S/ 30 264,60). Entran como concluidos, así que los indicadores abren
-  con el gasto real del año y la bandeja de despacho abre vacía, que es lo
-  correcto: no hay nada pendiente hasta que alguien registre una solicitud.
-- **Lo que la planilla no registra se deja vacío**, no se rellena: hora
-  programada, vehículo, persona que recibe, teléfono y los tiempos del flujo.
-  Por eso los paneles de *Reparto por vehículo* y *Tiempos del flujo* empiezan
-  sin datos y se van llenando con los tickets que sí pasen por la aplicación.
-  Cada servicio lleva `fuente` (`historico` o `app`), visible en el detalle y
-  en el CSV.
-- **Destinos** (`js/db/destinos.js`). Salen del mismo histórico. El mismo sitio
-  aparecía escrito de muchas formas —erratas, tildes ausentes, la dirección con
-  y sin número—, así que las redacciones se agruparon por parecido y quedó una
-  por lugar, con el nombre corregido a mano. Dos sedes de una misma empresa
-  siguen siendo dos destinos. Se ofrecen como sugerencia al escribir el
-  destino; el campo sigue aceptando texto libre.
-- **Tarifa de referencia.** Cada destino frecuente guarda lo que más veces se
-  pagó por ir allí (la moda, que es el precio de lista) y el rango real. Al
-  asignar la tarifa, logística ve esa referencia y puede aplicarla de un clic.
-- Los dos CSV de origen son el mismo conjunto de viajes: `data_valorizado.csv`
-  es `data_destinos.csv` con fecha, costo y solicitante, así que es el único
-  que se usa para generar los módulos.
-- **Correlativo.** Lo genera la app (`REQ-001`, `REQ-002`…). En *Seguimiento*
-  el prefijo `REQ-` es fijo en pantalla y el solicitante teclea solo el número.
-- Lo único ficticio que queda son las solicitudes con las que abre la bandeja
-  (`js/db/seed.js`), todas marcadas con `demo: true`.
-- La clave inicial de logística es `logistica` y ya no aparece escrita en la
-  interfaz. Cámbiala desde la pestaña *Padrón y accesos*.
-- No incluye IGV, arancel, percepción ni otros impuestos: es un registro
-  operativo interno.
+  personal: la tabla aparece vacía y solo muestra las fichas que logística
+  busca. La API hace lo mismo: `GET /api/personal` sin búsqueda no devuelve a
+  nadie.
+- **Nada de datos inventados.** La base arranca con el histórico real de 2026,
+  cargado como concluido. Lo que la planilla no registraba —hora, vehículo,
+  contacto, tiempos del flujo— se deja vacío en vez de rellenarse. Cada servicio
+  lleva `fuente` (`historico` o `app`).
+- **Sin autenticación de verdad.** Está pensado para la red interna de la
+  planta. La puerta es la clave de logística. Si esto sale a internet, lo
+  primero que hay que agregar son sesiones.
+- No incluye IGV ni otros impuestos: es un registro operativo interno.
+
+---
+
+## Análisis payback
+
+El módulo que compara tercerizar la mensajería contra tener motorizado propio
+—tres escenarios, capacidad, simulador de rutas y calendario de beneficios
+sociales— está documentado aparte en **[docs/payback.md](docs/payback.md)**.

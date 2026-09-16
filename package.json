@@ -1,0 +1,24 @@
+{
+  "name": "plansa-delivery",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Mensajería y encargos de Plásticos Nacionales: registro, trazabilidad y análisis de costos.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node tests/payback.mjs && node tests/api.mjs && node tests/frontend.mjs",
+    "db:reiniciar": "node backend/db/sembrar.js --forzar"
+  },
+  "imports": {
+    "#shared/*": "./shared/*",
+    "#data/*": "./data/*"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1"
+  }
+}

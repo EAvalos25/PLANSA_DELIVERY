@@ -1,0 +1,34 @@
+import { sesion } from './state/sessionState.js';
+import { renderBandeja } from './views/dispatch.js';
+import { renderHistorico } from './views/history.js';
+import { renderPadron } from './views/roster.js';
+import { renderKpiSiVisible } from './views/kpi.js';
+import { renderMis } from './views/tickets.js';
+import { sincronizar as sincronizarStore } from './api/estado.js';
+
+/**
+ * Orquestador de render: vuelve a pintar todo lo que corresponde a la
+ * sesión activa (admin o solicitante).
+ */
+export function renderTodo() {
+  if (!sesion) return;
+  if (sesion.tipo === 'admin') {
+    renderBandeja();
+    renderHistorico();
+    renderPadron();
+    renderKpiSiVisible();
+  } else {
+    renderMis();
+  }
+}
+
+/**
+ * Sondeo periódico que detecta cambios hechos desde otra pestaña u otra PC.
+ *
+ * Con el servidor de por medio ya no basta con mirar el almacenamiento local:
+ * hay que preguntar. La llamada es barata (solo el testigo de revisión) y el
+ * estado completo se recarga únicamente cuando algo cambió de verdad.
+ */
+export function iniciarSincronizacion(intervaloMs) {
+  setInterval(() => { sincronizarStore(renderTodo); }, intervaloMs);
+}
