@@ -2,6 +2,8 @@ import { abrir, cerrar, db } from './conexion.js';
 import * as personal from './repos/personal.js';
 import * as solicitudes from './repos/solicitudes.js';
 import * as ajustes from './repos/ajustes.js';
+import * as usuarios from '../usuarios/repositorio.js';
+import { hashClave } from '../usuarios/claves.js';
 import { padronInicial } from '#data/padron.js';
 import { historico2026, RESUMEN } from '#data/historico.js';
 
@@ -27,7 +29,8 @@ export function sembrar({ forzar = false, silencioso = false } = {}) {
   const decir = (...a) => { if (!silencioso) console.log(...a); };
 
   if (forzar) {
-    db().exec('DELETE FROM adjuntos; DELETE FROM solicitudes; DELETE FROM autorizaciones; DELETE FROM personal;');
+    db().exec('DELETE FROM adjuntos; DELETE FROM solicitudes; DELETE FROM autorizaciones; '
+      + 'DELETE FROM personal; DELETE FROM usuarios;');
     decir('Base vaciada.');
   }
 
@@ -35,21 +38,31 @@ export function sembrar({ forzar = false, silencioso = false } = {}) {
   if (yaHay) {
     decir('La base ya tiene datos (' + personal.total() + ' personas, '
       + solicitudes.total() + ' servicios). Nada que sembrar.');
-    return { sembrado: false };
+  } else {
+    const personas = personal.cargarPadronOficial(padronInicial());
+    decir('Padrón cargado: ' + personas + ' personas.');
+
+    const servicios = solicitudes.cargarHistorico(historico2026());
+    decir('Histórico cargado: ' + servicios + ' servicios de 2026 (S/ ' + RESUMEN.gasto.toFixed(2)
+      + ', del ' + RESUMEN.desde + ' al ' + RESUMEN.hasta + ').');
+
+    ajustes.escribir('version_datos', VERSION_DATOS);
   }
 
-  const personas = personal.cargarPadronOficial(padronInicial());
-  decir('Padrón cargado: ' + personas + ' personas.');
+  // El usuario admin se siembra aparte y siempre se comprueba, no solo la
+  // primera vez: si alguien restaura una base sin la tabla de usuarios llena
+  // (o la vació a mano), el sistema no debe quedar sin nadie que pueda entrar.
+  let credencialesAdmin = null;
+  if (!usuarios.hayAdmin()) {
+    const claveTemporal = 'admin';
+    usuarios.crear({ usuario: 'admin', claveHash: hashClave(claveTemporal), rol: 'admin', creadoPor: 'siembra' });
+    credencialesAdmin = { usuario: 'admin', claveTemporal };
+    decir('Usuario "admin" creado con clave temporal "admin". Cámbiala en el primer ingreso.');
+  }
 
-  const servicios = solicitudes.cargarHistorico(historico2026());
-  decir('Histórico cargado: ' + servicios + ' servicios de 2026 (S/ ' + RESUMEN.gasto.toFixed(2)
-    + ', del ' + RESUMEN.desde + ' al ' + RESUMEN.hasta + ').');
-
-  ajustes.escribir('version_datos', VERSION_DATOS);
-  if (!ajustes.leer('pin')) ajustes.escribir('pin', ajustes.CLAVE_POR_DEFECTO);
   ajustes.tocar();
 
-  return { sembrado: true, personas, servicios };
+  return { sembrado: !yaHay, credencialesAdmin };
 }
 
 // Ejecutable directo: node backend/db/sembrar.js [--forzar]

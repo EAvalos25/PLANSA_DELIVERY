@@ -3,7 +3,12 @@ import { fechaHora } from '../utils/format.js';
 import { toast } from '../utils/toast.js';
 import * as api from '../api/estado.js';
 import { DB } from '../api/estado.js';
+import { sesion } from '../state/sessionState.js';
 import { normalizarDoc, DOC_VALIDO } from '#shared/documento.js';
+
+/** El servidor es quien de verdad decide: esto solo evita ofrecer un botón
+ *  que a seguimiento le va a responder 403. */
+const esAdmin = () => !sesion || sesion.rol === 'admin';
 
 /**
  * Padrón de personal habilitado y autorizaciones pendientes de acceso.
@@ -24,6 +29,10 @@ export function renderPadronSiVisible() {
 }
 
 export async function renderPadron() {
+  const admin = esAdmin();
+  $('formAltaPersonal').style.display = admin ? '' : 'none';
+  $('panelPedirAutSeg').style.display = admin ? 'none' : '';
+
   const pend = DB.autorizaciones.filter(a => a.estado === 'Pendiente');
   $('cntAut').textContent = pend.length;
   $('cntPadron').textContent = DB.totalPersonal;
@@ -31,8 +40,11 @@ export async function renderPadron() {
   $('listaAut').innerHTML = pend.length ? pend.map(a =>
     '<div class="aut"><div><div class="aut-dni">' + esc(a.dni) + '</div>'
     + '<div class="small muted">Solicitado el ' + fechaHora(a.solicitado) + '</div></div>'
-    + '<div class="tools"><button class="btn btn-sm" onclick="formAlta(\'' + a.dni + '\')">Habilitar</button>'
-    + '<button class="btn btn-sm btn-ghost" onclick="rechazarAut(\'' + a.dni + '\')">Rechazar</button></div></div>'
+    + (admin
+      ? '<div class="tools"><button class="btn btn-sm" onclick="formAlta(\'' + a.dni + '\')">Habilitar</button>'
+        + '<button class="btn btn-sm btn-ghost" onclick="rechazarAut(\'' + a.dni + '\')">Rechazar</button></div>'
+      : '<div class="small muted">A la espera de admin</div>')
+    + '</div>'
   ).join('') : '<div class="muted small">Sin pedidos pendientes.</div>';
 
   const vacio = m => '<tr><td colspan="5" class="muted small" style="padding:18px 12px">' + m + '</td></tr>';
@@ -63,8 +75,28 @@ export async function renderPadron() {
     '<tr><td class="tk" style="color:var(--text)">' + esc(p.dni) + '</td><td>' + esc(p.nombre) + '</td>'
     + '<td class="muted small">' + esc(p.cargo || '—') + '</td>'
     + '<td class="muted">' + esc(p.area) + '</td>'
-    + '<td><button class="btn btn-sm btn-ghost" onclick="quitarPersona(\'' + p.dni + '\')">Quitar</button></td></tr>'
+    + '<td>' + (admin ? '<button class="btn btn-sm btn-ghost" onclick="quitarPersona(\'' + p.dni + '\')">Quitar</button>' : '') + '</td></tr>'
   ).join('') : vacio('Sin coincidencias para esa búsqueda.');
+}
+
+/** Pedido de alta que hace logística de seguimiento al toparse con alguien
+ *  fuera del padrón (mismo circuito que usa el solicitante para sí mismo). */
+export async function pedirAutorizacionStaff() {
+  const dni = normalizarDoc($('segDni').value);
+  if (!DOC_VALIDO.test(dni)) { $('eSegDni').classList.add('on'); return; }
+  $('eSegDni').classList.remove('on');
+
+  let r;
+  try {
+    r = await api.pedirAutorizacion(dni);
+  } catch (e) {
+    toast('No se pudo registrar el pedido', e.message, 'bad');
+    return;
+  }
+  $('segDni').value = '';
+  renderPadron();
+  toast(r.repetido ? 'Ya había un pedido en curso' : 'Autorización solicitada',
+    'Admin revisará el DNI ' + dni + '.', r.repetido ? 'warn' : undefined);
 }
 
 export async function agregarPersona() {
@@ -115,23 +147,4 @@ export async function rechazarAut(dni) {
   }
   renderPadron();
   toast('Pedido rechazado', 'El DNI ' + dni + ' sigue bloqueado.', 'warn');
-}
-
-export async function cambiarPin() {
-  const actual = $('pinActual').value || '';
-  const nueva = $('nuevoPin').value || '';
-  if (nueva.length < 6) { $('ePin').textContent = 'La clave debe tener al menos 6 caracteres.'; $('ePin').classList.add('on'); return; }
-
-  try {
-    // Hay que probar que se conoce la clave vigente: sin eso, cualquiera con la
-    // pantalla abierta podría dejar fuera al resto del área.
-    await api.cambiarClave(actual, nueva);
-  } catch (e) {
-    $('ePin').textContent = e.message;
-    $('ePin').classList.add('on');
-    return;
-  }
-  $('ePin').classList.remove('on');
-  $('pinActual').value = ''; $('nuevoPin').value = '';
-  toast('Clave guardada', 'Se usará en el próximo ingreso de logística.');
 }

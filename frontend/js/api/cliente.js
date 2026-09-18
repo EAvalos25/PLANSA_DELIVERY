@@ -1,3 +1,5 @@
+import { sesion } from '../state/sessionState.js';
+
 /**
  * Cliente HTTP contra la API. Único punto del navegador que habla con el
  * servidor: si mañana cambia la URL base o hay que mandar un token, se toca
@@ -12,6 +14,10 @@ const BASE = '/api';
 
 async function pedir(metodo, ruta, cuerpo, opciones = {}) {
   const init = { method: metodo, headers: {} };
+
+  // El solicitante (DNI) no tiene token: solo lo manda logística, ya con
+  // sesión abierta. Las rutas públicas simplemente lo ignoran.
+  if (sesion && sesion.token) init.headers['Authorization'] = 'Bearer ' + sesion.token;
 
   if (cuerpo instanceof FormData) {
     // Sin Content-Type: el navegador pone el boundary de multipart, que multer

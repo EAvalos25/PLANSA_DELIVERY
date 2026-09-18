@@ -79,6 +79,28 @@ CREATE TABLE IF NOT EXISTS autorizaciones (
 
 CREATE INDEX IF NOT EXISTS idx_autorizaciones_estado ON autorizaciones (estado);
 
+-- --------------------------------------------------------------- usuarios
+-- Cuentas de logística: quién puede ENTRAR a despachar, ver indicadores o
+-- administrar el padrón. No confundir con `personal`, que es quién puede
+-- PEDIR un servicio: son universos distintos y del segundo hay cientos.
+--
+-- rol 'admin'        controles generales, indicadores, payback y padrón.
+-- rol 'seguimiento'  bandeja de despacho; para dar de alta a alguien que no
+--                    figura en el padrón, pide autorización en vez de poder
+--                    agregarlo directo.
+CREATE TABLE IF NOT EXISTS usuarios (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  usuario             TEXT NOT NULL UNIQUE,
+  clave_hash          TEXT NOT NULL,
+  rol                 TEXT NOT NULL CHECK (rol IN ('admin', 'seguimiento')),
+  activo              INTEGER NOT NULL DEFAULT 1 CHECK (activo IN (0, 1)),
+  debe_cambiar_clave  INTEGER NOT NULL DEFAULT 1 CHECK (debe_cambiar_clave IN (0, 1)),
+  creado_por          TEXT NOT NULL DEFAULT '',
+  creado_en           TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_usuarios_rol ON usuarios (rol);
+
 -- ----------------------------------------------------------------- adjuntos
 -- Metadatos de las guías de entrega. El binario NO vive aquí: multer lo deja en
 -- uploads/ y esta tabla guarda con qué nombre quedó. Separarlos mantiene la

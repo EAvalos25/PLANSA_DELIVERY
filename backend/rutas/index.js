@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
+import ExcelJS from 'exceljs';
 
 import * as personal from '../db/repos/personal.js';
 import * as solicitudes from '../db/repos/solicitudes.js';
@@ -9,12 +10,16 @@ import * as adjuntos from '../db/repos/adjuntos.js';
 import * as ajustes from '../db/repos/ajustes.js';
 import { conSubida } from '../middleware/subida.js';
 import { limitarIntentos } from '../middleware/limites.js';
+import { asinc } from '../middleware/errores.js';
+import { usuarios } from '../usuarios/rutas.js';
+import { requiereSesion, requiereRol } from '../usuarios/middleware.js';
 import { CONFIG } from '../config.js';
 
 import { DESTINOS } from '#data/destinos.js';
 import { analizarDemanda } from '#shared/payback/demanda.js';
 import { construir } from '#shared/payback/escenarios.js';
 import { comparar } from '#shared/payback/payback.js';
+import { COLUMNAS_VIAJES, filtrarPorRango } from '#shared/exportarViajes.js';
 
 /**
  * La API. Un archivo por ahora, porque son pocas rutas y tenerlas juntas deja
@@ -28,6 +33,11 @@ import { comparar } from '#shared/payback/payback.js';
  */
 
 export const api = Router();
+
+// Ingreso, cambio de clave propia y administración de usuarios de logística.
+// Vive en su propio módulo (usuarios/) porque agrupa hashing de claves,
+// sesiones y permisos: cosas que no tienen nada que ver con el resto de la API.
+api.use(usuarios);
 
 const error = (msg, status) => Object.assign(new Error(msg), { status });
 
@@ -55,17 +65,12 @@ api.get('/estado', (req, res) => {
 api.get('/revision', (req, res) => res.json({ revision: ajustes.revision() }));
 
 // -------------------------------------------------------------------- auth
-// La clave se compara en el servidor. Nunca se envía al navegador.
+// El DNI del solicitante no requiere clave: solo comprueba que está en el
+// padrón. El ingreso de logística (usuario + clave) vive en usuarios/rutas.js.
 //
-// Las dos rutas de ingreso llevan freno por IP: son las únicas que responden
-// distinto según lo que se les mande, así que son las únicas que sirven para
-// probar a ciegas, sea una clave o un DNI tras otro.
+// Esta ruta lleva freno por IP: responde distinto según el DNI, así que
+// sirve para probar documentos a ciegas uno tras otro.
 const frenoIngreso = limitarIntentos();
-
-api.post('/auth/logistica', frenoIngreso, (req, res) => {
-  if (!ajustes.verificarClave(req.body?.clave)) throw error('Clave incorrecta.', 401);
-  res.json({ ok: true });
-});
 
 api.get('/auth/solicitante/:doc', frenoIngreso, (req, res) => {
   const p = personal.porDocumento(req.params.doc);
@@ -74,18 +79,63 @@ api.get('/auth/solicitante/:doc', frenoIngreso, (req, res) => {
 });
 
 // ---------------------------------------------------------------- personal
-api.get('/personal', (req, res) => {
+// La búsqueda es de uso interno de logística (ficha de alguien al armar un
+// ticket o revisar el padrón): hace falta haber ingresado, cualquiera de los
+// dos roles. Agregar o quitar del padrón es cosa de admin: quien encuentra a
+// alguien no identificado pide autorización (ver /autorizaciones), no lo
+// agrega directo.
+api.get('/personal', requiereSesion, (req, res) => {
   // Sin búsqueda no se devuelve el padrón completo: son datos personales de
   // todo el personal y no hay motivo para volcarlos por pedir la ruta.
   const q = req.query.q;
   res.json(q ? personal.buscar(q) : { total: personal.total(), resultados: [] });
 });
 
-api.post('/personal', (req, res) => res.status(201).json(personal.agregar(req.body || {})));
-api.delete('/personal/:dni', (req, res) => res.json(personal.quitar(req.params.dni)));
+api.post('/personal', requiereSesion, requiereRol('admin'), (req, res) =>
+  res.status(201).json(personal.agregar(req.body || {})));
+api.delete('/personal/:dni', requiereSesion, requiereRol('admin'), (req, res) =>
+  res.json(personal.quitar(req.params.dni)));
 
 // ------------------------------------------------------------- solicitudes
 api.get('/solicitudes', (req, res) => res.json(solicitudes.listar()));
+
+/**
+ * Reporte de viajes en Excel, con columnas tipadas (fecha, número) en vez del
+ * texto plano del CSV: pensado para abrirse y trabajarse en la propia hoja de
+ * cálculo, no para alimentar otro sistema. `desde`/`hasta` filtran por la
+ * fecha PROGRAMADA del viaje; en blanco, ese lado del rango queda abierto.
+ *
+ * Va ANTES de `/solicitudes/:id`: si no, "exportar" caería en `:id` y el
+ * servidor respondería "no existe el ticket exportar" en vez de exportar nada.
+ */
+api.get('/solicitudes/exportar', requiereSesion, asinc(async (req, res) => {
+  const { desde, hasta } = req.query;
+  if (desde && !/^\d{4}-\d{2}-\d{2}$/.test(desde)) throw error('La fecha "desde" no es válida.', 400);
+  if (hasta && !/^\d{4}-\d{2}-\d{2}$/.test(hasta)) throw error('La fecha "hasta" no es válida.', 400);
+  if (desde && hasta && desde > hasta) throw error('La fecha "desde" no puede ser posterior a "hasta".', 400);
+
+  const filas = filtrarPorRango(solicitudes.listar(), desde, hasta);
+
+  const libro = new ExcelJS.Workbook();
+  libro.creator = 'PLANSA Delivery';
+  libro.created = new Date();
+
+  const hoja = libro.addWorksheet('Viajes', { views: [{ state: 'frozen', ySplit: 1 }] });
+  const formato = { numero: '#,##0.00', fecha: 'dd/mm/yyyy', fechahora: 'dd/mm/yyyy hh:mm' };
+  hoja.columns = COLUMNAS_VIAJES.map(([etiqueta, tipo]) => ({
+    header: etiqueta,
+    width: Math.max(12, etiqueta.length + 2),
+    style: formato[tipo] ? { numFmt: formato[tipo] } : {}
+  }));
+  hoja.getRow(1).font = { bold: true };
+  filas.forEach(s => hoja.addRow(COLUMNAS_VIAJES.map(([, , valor]) => valor(s))));
+
+  const rango = desde || hasta ? '_' + (desde || 'inicio') + '_a_' + (hasta || 'hoy') : '';
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', 'attachment; filename="viajes_plasticos_nacionales' + rango + '.xlsx"');
+  await libro.xlsx.write(res);
+  res.end();
+}));
 
 api.get('/solicitudes/:id', (req, res) => {
   const s = solicitudes.porId(req.params.id);
@@ -93,17 +143,27 @@ api.get('/solicitudes/:id', (req, res) => {
   res.json(s);
 });
 
+// Crear un ticket y consultarlo son autoservicio del solicitante: no llevan
+// sesión de logística. Asignar transporte/tarifa y mover el estado sí, porque
+// es trabajo de despacho.
 api.post('/solicitudes', (req, res) => res.status(201).json(solicitudes.crear(req.body || {})));
-api.patch('/solicitudes/:id', (req, res) => res.json(solicitudes.actualizar(req.params.id, req.body || {})));
-api.post('/solicitudes/:id/avanzar', (req, res) => res.json(solicitudes.avanzar(req.params.id)));
+api.patch('/solicitudes/:id', requiereSesion, (req, res) =>
+  res.json(solicitudes.actualizar(req.params.id, req.body || {})));
+api.post('/solicitudes/:id/avanzar', requiereSesion, (req, res) =>
+  res.json(solicitudes.avanzar(req.params.id)));
 
 // ---------------------------------------------------------- autorizaciones
-api.get('/autorizaciones', (req, res) => res.json(autorizaciones.listar()));
+// Pedirla es autoservicio (el solicitante cuyo DNI no está en el padrón, o
+// logística de seguimiento que encontró a alguien no identificado). Resolverla
+// —darle acceso de verdad o rechazarlo— es cosa de admin.
+api.get('/autorizaciones', requiereSesion, (req, res) => res.json(autorizaciones.listar()));
 api.post('/autorizaciones', (req, res) => res.status(201).json(autorizaciones.pedir(req.body?.dni)));
-api.patch('/autorizaciones/:dni', (req, res) =>
+api.patch('/autorizaciones/:dni', requiereSesion, requiereRol('admin'), (req, res) =>
   res.json(autorizaciones.resolver(req.params.dni, req.body?.estado)));
 
 // ---------------------------------------------------------------- adjuntos
+// Ver los adjuntos es autoservicio (el solicitante los ve en su tarjeta, sin
+// poder tocarlos). Subir o borrar uno sí es trabajo de despacho.
 api.get('/adjuntos', (req, res) =>
   res.json(req.query.ticket ? adjuntos.deTicket(req.query.ticket) : adjuntos.listar()));
 
@@ -112,7 +172,7 @@ api.get('/adjuntos', (req, res) =>
  * aquí solo se registra dónde quedó. Si el registro falla, se borra el archivo:
  * sin esto, cada error dejaría basura en la carpeta.
  */
-api.post('/adjuntos', conSubida, (req, res) => {
+api.post('/adjuntos', requiereSesion, conSubida, (req, res) => {
   if (!req.file) throw error('No llegó ningún archivo en el campo "archivo".', 400);
   try {
     res.status(201).json(adjuntos.registrar({
@@ -142,24 +202,19 @@ api.get('/adjuntos/:id/archivo', (req, res) => {
   res.sendFile(path.resolve(ruta));
 });
 
-api.delete('/adjuntos/:id', (req, res) => res.json(adjuntos.eliminar(req.params.id)));
-
-// ----------------------------------------------------------------- ajustes
-api.put('/ajustes/clave', (req, res) => {
-  if (!ajustes.verificarClave(req.body?.actual)) throw error('La clave actual no es correcta.', 401);
-  ajustes.cambiarClave(req.body?.nueva);
-  res.json({ ok: true });
-});
+api.delete('/adjuntos/:id', requiereSesion, (req, res) => res.json(adjuntos.eliminar(req.params.id)));
 
 // ----------------------------------------------------------------- payback
 /**
  * El análisis completo, calculado en el servidor.
  *
- * La pantalla también sabe calcularlo —el código de shared/ lo usan los dos—,
- * pero tenerlo en la API permite consultarlo desde Power BI, un script o una
- * hoja de cálculo sin abrir el navegador.
+ * La pantalla también sabe calcularlo —el código de shared/ lo usan los dos,
+ * directo contra el estado que ya tiene cargado— así que esta ruta no la pisa
+ * la interfaz. Existe para consultarlo desde Power BI, un script o una hoja de
+ * cálculo, y por eso es la única "vista" de datos que se reserva a admin: es
+ * el análisis de costos completo, no un ticket suelto.
  */
-api.get('/payback', (req, res) => {
+api.get('/payback', requiereSesion, requiereRol('admin'), (req, res) => {
   const demanda = analizarDemanda(solicitudes.listar());
   if (!demanda.hay) throw error('Todavía no hay servicios registrados para analizar.', 409);
 

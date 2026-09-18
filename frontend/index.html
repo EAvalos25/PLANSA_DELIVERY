@@ -42,54 +42,79 @@
         <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>
       </svg>
     </button>
+
+    <!-- El acceso de logística no compite con el del solicitante en la
+         pantalla de ingreso: vive oculto detrás de este icono y aparece como
+         un panel flotante, con transición, solo cuando alguien de logística
+         lo pide. Se oculta entero (icono incluido) apenas hay una sesión. -->
+    <div class="logistica-anchor" id="logisticaAnchor">
+      <button class="theme-toggle" id="btnLogisticaToggle" onclick="alternarAccesoLogistica()"
+              aria-label="Acceso de logística" title="Acceso de logística" aria-expanded="false" aria-haspopup="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="9.5" cy="7.2" r="3"/>
+          <path d="M3.8 18.5c.7-3.2 3-5 5.7-5 .8 0 1.6.15 2.3.47"/>
+          <circle cx="17.5" cy="16.3" r="2"/>
+          <path d="M17.5 12.7v1.1M17.5 18.8v1.1M21.1 16.3h-1.1M15.6 16.3h-1.1M19.9 13.9l-.78.78M16.28 17.52l-.78.78M19.9 18.7l-.78-.78M16.28 15.08l-.78-.78"/>
+        </svg>
+      </button>
+
+      <div class="logistica-popover" id="logisticaPopover">
+        <section class="card card-pad">
+          <h2 class="card-title">Acceso de logística</h2>
+          <p class="card-note">Bandeja de despacho, tarifas e indicadores. Usuario y clave los entrega el administrador.</p>
+          <div class="field">
+            <label for="userInput">Usuario</label>
+            <input class="input" id="userInput" placeholder="usuario" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="pinInput">Clave</label>
+            <input class="input" id="pinInput" type="password" placeholder="••••••••" autocomplete="off">
+            <div class="err" id="pinErr">Usuario o clave incorrectos.</div>
+          </div>
+          <button class="btn btn-ghost btn-wide" onclick="entrarAdmin()">Entrar como logística</button>
+        </section>
+      </div>
+    </div>
+
     <div class="session" id="session" style="display:none">
       <div>
         <div class="session-name" id="sessName">—</div>
         <div class="session-role" id="sessRole">—</div>
       </div>
+      <button class="btn-exit" id="btnMiClave" style="display:none" onclick="abrirCambioClave()">Mi clave</button>
       <button class="btn-exit" onclick="salir()">Salir</button>
     </div>
   </div>
 </header>
 
 <!-- ============ LOGIN ============ -->
+<!-- Solo el ingreso del solicitante: es la puerta que usa casi todo el
+     personal, así que es lo primero -y lo único- que se ve al abrir la
+     aplicación, centrado en la página. -->
 <main class="login-stage" id="loginStage">
   <div class="login-inner">
-    <div class="login-grid">
-      <section class="waybill card-pad">
-        <h2 class="card-title">Ingreso del solicitante</h2>
-        <p class="card-note">Escribe tu DNI para validar que estás en el padrón de personal.</p>
+    <section class="waybill card-pad">
+      <h2 class="card-title">Ingreso del solicitante</h2>
+      <p class="card-note">Escribe tu DNI para validar que estás en el padrón de personal.</p>
 
-        <div class="alert" id="loginAlert">
-          <div class="alert-icon" id="loginAlertIcon">!</div>
-          <div>
-            <strong id="loginAlertTitle">Acceso denegado</strong>
-            <p id="loginAlertMsg"></p>
-            <div style="margin-top:11px;display:none" id="loginAlertActions">
-              <button class="btn btn-sm" onclick="pedirAutorizacion()">Pedir autorización a logística</button>
-            </div>
+      <div class="alert" id="loginAlert">
+        <div class="alert-icon" id="loginAlertIcon">!</div>
+        <div>
+          <strong id="loginAlertTitle">Acceso denegado</strong>
+          <p id="loginAlertMsg"></p>
+          <div style="margin-top:11px;display:none" id="loginAlertActions">
+            <button class="btn btn-sm" onclick="pedirAutorizacion()">Pedir autorización a logística</button>
           </div>
         </div>
+      </div>
 
-        <div class="field">
-          <label for="dniInput">Documento de identidad <span class="req">*</span></label>
-          <input class="input dni" id="dniInput" inputmode="numeric" maxlength="9" placeholder="00000000" autocomplete="off">
-          <div class="hint">8 dígitos, sin puntos ni guiones. Si tu DNI empieza con cero, escríbelo completo. Carné de extranjería: 9 dígitos.</div>
-        </div>
-        <button class="btn btn-wide" onclick="entrarSolicitante()">Entrar</button>
-      </section>
-
-      <section class="card card-pad">
-        <h2 class="card-title">Acceso de logística</h2>
-        <p class="card-note">Bandeja de despacho, tarifas e indicadores.</p>
-        <div class="field">
-          <label for="pinInput">Clave del área</label>
-          <input class="input" id="pinInput" type="password" placeholder="••••••••" autocomplete="off">
-          <div class="err" id="pinErr">Clave incorrecta. Vuelve a intentarlo.</div>
-        </div>
-        <button class="btn btn-ghost btn-wide" onclick="entrarAdmin()">Entrar como logística</button>
-      </section>
-    </div>
+      <div class="field">
+        <label for="dniInput">Documento de identidad <span class="req">*</span></label>
+        <input class="input dni" id="dniInput" inputmode="numeric" maxlength="9" placeholder="00000000" autocomplete="off">
+        <div class="hint">8 dígitos, sin puntos ni guiones. Si tu DNI empieza con cero, escríbelo completo. Carné de extranjería: 9 dígitos.</div>
+      </div>
+      <button class="btn btn-wide" onclick="entrarSolicitante()">Entrar</button>
+    </section>
   </div>
 </main>
 
@@ -270,6 +295,7 @@
     <button class="tab" data-atab="historico" onclick="tabAdmin('historico')">Histórico <span class="count" id="cntHist">0</span></button>
     <button class="tab" data-atab="kpi" onclick="tabAdmin('kpi')">Indicadores</button>
     <button class="tab" data-atab="padron" onclick="tabAdmin('padron')">Padrón y accesos <span class="count" id="cntAut">0</span></button>
+    <button class="tab" data-atab="usuarios" id="tabUsuarios" onclick="tabAdmin('usuarios')">Usuarios</button>
     <button class="btn-payback" id="btnPayback" data-atab="payback" onclick="tabAdmin('payback')" title="Analizar si conviene motorizado propio">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>
@@ -300,7 +326,8 @@
       </div>
       <div class="tools">
         <input class="input" id="qHist" placeholder="Buscar ticket, solicitante o destino" style="width:280px" oninput="renderHistorico()">
-        <button class="btn btn-sm" onclick="exportarCSV()">Descargar CSV</button>
+        <button class="btn btn-sm btn-ghost" onclick="exportarCSV()">Descargar CSV</button>
+        <button class="btn btn-sm" onclick="abrirExportarExcel()">Exportar a Excel</button>
       </div>
     </div>
     <div class="banner">
@@ -376,38 +403,33 @@
           <p class="sub">DNI que intentaron ingresar sin estar en el padrón.</p>
           <div id="listaAut"></div>
         </div>
-        <div class="panel">
-          <h3>Clave del área</h3>
-          <p class="sub">Hay que conocer la clave vigente para cambiarla. Se aplica al siguiente ingreso.</p>
-          <div class="field">
-            <label for="pinActual">Clave actual</label>
-            <input class="input" id="pinActual" type="password" placeholder="••••••••" autocomplete="off">
-          </div>
-          <div class="field">
-            <label for="nuevoPin">Nueva clave</label>
-            <input class="input" id="nuevoPin" type="password" placeholder="Mínimo 6 caracteres" autocomplete="off">
-            <div class="err" id="ePin">La clave debe tener al menos 6 caracteres.</div>
-          </div>
-          <button class="btn btn-sm" onclick="cambiarPin()">Guardar clave</button>
+        <div class="panel" id="panelPedirAutSeg" style="display:none">
+          <h3>Personal no identificado</h3>
+          <p class="sub">Si encuentras a alguien que no figura en el padrón, pide su alta a logística en vez de agregarlo tú mismo.</p>
+          <div class="field"><label for="segDni">Documento</label><input class="input" id="segDni" maxlength="9" inputmode="numeric" placeholder="00000000"></div>
+          <div class="err" id="eSegDni">Escribe un documento válido (8 dígitos, o 9 si es carné de extranjería).</div>
+          <button class="btn btn-sm" onclick="pedirAutorizacionStaff()">Solicitar autorización</button>
         </div>
       </div>
 
-      <div class="panel">
+      <div class="panel" id="panelPersonal">
         <h3>Personal habilitado</h3>
         <p class="sub"><span id="cntPadron">0</span> personas en el padrón de RR.HH.</p>
         <div class="banner" style="margin-bottom:14px">
           <div><b>El listado no se muestra completo.</b> Son datos personales de todo el personal: busca por documento, nombre o apellido y aparecerá solo esa ficha.</div>
         </div>
-        <div class="row">
-          <div class="field"><label for="pDni">Documento</label><input class="input" id="pDni" maxlength="9" inputmode="numeric" placeholder="00000000"></div>
-          <div class="field"><label for="pNom">Nombre y apellidos</label><input class="input" id="pNom" placeholder="Nombre completo"></div>
+        <div id="formAltaPersonal">
+          <div class="row">
+            <div class="field"><label for="pDni">Documento</label><input class="input" id="pDni" maxlength="9" inputmode="numeric" placeholder="00000000"></div>
+            <div class="field"><label for="pNom">Nombre y apellidos</label><input class="input" id="pNom" placeholder="Nombre completo"></div>
+          </div>
+          <div class="row">
+            <div class="field"><label for="pCargo">Cargo</label><input class="input" id="pCargo" placeholder="Ej.: Coordinador de Logística"></div>
+            <div class="field"><label for="pArea">Área</label><input class="input" id="pArea" placeholder="Ej.: Logistica"></div>
+          </div>
+          <div class="err" id="ePadron">Completa el documento (8 dígitos, o 9 si es carné de extranjería) y el nombre.</div>
+          <button class="btn btn-sm" onclick="agregarPersona()">Agregar al padrón</button>
         </div>
-        <div class="row">
-          <div class="field"><label for="pCargo">Cargo</label><input class="input" id="pCargo" placeholder="Ej.: Coordinador de Logística"></div>
-          <div class="field"><label for="pArea">Área</label><input class="input" id="pArea" placeholder="Ej.: Logistica"></div>
-        </div>
-        <div class="err" id="ePadron">Completa el documento (8 dígitos, o 9 si es carné de extranjería) y el nombre.</div>
-        <button class="btn btn-sm" onclick="agregarPersona()">Agregar al padrón</button>
         <div class="field" style="margin:16px 0 6px">
           <label for="qPadron">Buscar en el padrón</label>
           <input class="input" id="qPadron" placeholder="Documento, apellido o nombre" oninput="renderPadron()" autocomplete="off">
@@ -415,6 +437,40 @@
         </div>
         <div class="table-wrap" style="max-height:340px">
           <table style="min-width:600px"><thead><tr><th>Documento</th><th>Nombre</th><th>Cargo</th><th>Área</th><th></th></tr></thead><tbody id="tbPadron"></tbody></table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="aUsuarios">
+    <div class="section-head">
+      <div>
+        <h2>Usuarios de logística</h2>
+        <p>Cuentas para entrar a esta pantalla. El padrón de personal (quién puede pedir un servicio) se administra aparte, en "Padrón y accesos".</p>
+      </div>
+    </div>
+    <div class="grid2" style="align-items:start">
+      <div class="panel">
+        <h3>Crear usuario</h3>
+        <p class="sub">Se genera una clave temporal de un solo uso: se muestra una vez y el usuario debe cambiarla al ingresar.</p>
+        <div class="field">
+          <label for="uNuevoUsuario">Usuario</label>
+          <input class="input" id="uNuevoUsuario" placeholder="p. ej. jperez" autocomplete="off">
+        </div>
+        <div class="field">
+          <label for="uNuevoRol">Rol</label>
+          <select class="select" id="uNuevoRol">
+            <option value="seguimiento">Seguimiento (bandeja de despacho)</option>
+            <option value="admin">Admin (controles, indicadores y padrón)</option>
+          </select>
+        </div>
+        <div class="err" id="eUsuario">Escribe un nombre de usuario válido.</div>
+        <button class="btn btn-sm" onclick="crearUsuarioLogistica()">Crear usuario</button>
+      </div>
+      <div class="panel">
+        <h3>Cuentas existentes</h3>
+        <div class="table-wrap" style="max-height:420px">
+          <table style="min-width:520px"><thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th></th></tr></thead><tbody id="tbUsuarios"></tbody></table>
         </div>
       </div>
     </div>

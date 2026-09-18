@@ -18,17 +18,21 @@ import { DESTINOS_FRECUENTES } from '#data/destinos.js';
 import { sesion } from './state/sessionState.js';
 import { iniciarSincronizacion } from './render.js';
 import { alternarTema, actualizarBoton } from './ui/theme.js';
+import { alternarAccesoLogistica, cerrarAccesoLogistica } from './ui/logisticaPopover.js';
 
-import { entrarSolicitante, pedirAutorizacion, entrarAdmin, salir } from './auth.js';
+import { entrarSolicitante, pedirAutorizacion, entrarAdmin, salir, abrirCambioClave, guardarCambioClave } from './auth.js';
 import { tabUser, tabAdmin } from './views/tabs.js';
 import { setAccion, toggleOrigen, refrescarHoras, validarHoraViva, enviarSolicitud } from './views/requestForm.js';
 import { consultarTicket, renderMis } from './views/tickets.js';
 import {
   renderBandeja, setFiltroBandeja, setVehiculo, setCosto, avanzar, verDetalle, cerrarModal
 } from './views/dispatch.js';
-import { renderHistorico, exportarCSV } from './views/history.js';
+import { renderHistorico, exportarCSV, abrirExportarExcel, confirmarExportarExcel } from './views/history.js';
 import { setFiltroKpi } from './views/kpi.js';
-import { renderPadron, agregarPersona, quitarPersona, formAlta, rechazarAut, cambiarPin } from './views/roster.js';
+import { renderPadron, agregarPersona, quitarPersona, formAlta, rechazarAut, pedirAutorizacionStaff } from './views/roster.js';
+import {
+  renderUsuarios, crearUsuarioLogistica, restablecerClaveUsuarioVista, cambiarEstadoUsuarioVista
+} from './views/usuarios.js';
 import { subirGuia, abrirAdjunto, eliminarAdjunto } from './views/attachments.js';
 
 // Módulo payback: análisis de contratar motorizado propio frente al courier.
@@ -41,15 +45,16 @@ import {
 
 // ---- Puente hacia los atributos inline del HTML (estático y generado) ----
 Object.assign(window, {
-  alternarTema,
-  pedirAutorizacion, entrarSolicitante, entrarAdmin, salir,
+  alternarTema, alternarAccesoLogistica,
+  pedirAutorizacion, entrarSolicitante, entrarAdmin, salir, abrirCambioClave, guardarCambioClave,
   setAccion, toggleOrigen, refrescarHoras, validarHoraViva, enviarSolicitud,
   tabUser, tabAdmin,
   consultarTicket, renderMis,
   renderBandeja, setFiltroBandeja, setVehiculo, setCosto, avanzar, verDetalle, cerrarModal,
-  renderHistorico, exportarCSV,
+  renderHistorico, exportarCSV, abrirExportarExcel, confirmarExportarExcel,
   setFiltroKpi,
-  renderPadron, agregarPersona, quitarPersona, formAlta, rechazarAut, cambiarPin,
+  renderPadron, agregarPersona, quitarPersona, formAlta, rechazarAut, pedirAutorizacionStaff,
+  renderUsuarios, crearUsuarioLogistica, restablecerClaveUsuarioVista, cambiarEstadoUsuarioVista,
   subirGuia, abrirAdjunto, eliminarAdjunto,
   renderPayback, setMotoPayback, setBonoPayback, setInicioPayback,
   pbAgregarParada, pbQuitarParada, pbZonaParada, pbCuantasParadas, pbHoraSalida,
@@ -57,13 +62,19 @@ Object.assign(window, {
 });
 
 // ---- Listeners que no van como atributos inline ----
-document.addEventListener('keydown', e => { if (e.key === 'Escape') cerrarModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { cerrarModal(); cerrarAccesoLogistica(); } });
+// Clic fuera del icono o del panel: se cierra solo, como cualquier menú.
+document.addEventListener('click', e => {
+  if (!$('logisticaAnchor').contains(e.target)) cerrarAccesoLogistica();
+});
 $('dniInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrarSolicitante(); });
 $('dniInput').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, ''); });
+$('userInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrarAdmin(); });
 $('pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrarAdmin(); });
 $('qTicket').addEventListener('keydown', e => { if (e.key === 'Enter') consultarTicket(); });
 $('qTicket').addEventListener('input', e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); });
 $('pDni').addEventListener('input', e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); });
+$('segDni').addEventListener('input', e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); });
 $('fTel').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, ''); });
 
 // ---- Arranque ----

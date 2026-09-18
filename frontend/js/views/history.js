@@ -1,8 +1,9 @@
 import { $, esc } from '../utils/dom.js';
 import { fechaCorta, horasEntre, corta, hoyISO } from '../utils/format.js';
 import { toast } from '../utils/toast.js';
-import { DB } from '../api/estado.js';
+import { DB, exportarExcel } from '../api/estado.js';
 import { chipEstado, origenCorto } from './presenters.js';
+import { abrirModal, cerrarModal } from './dispatch.js';
 
 /**
  * Histórico de servicios: tabla filtrable de una fila por servicio y
@@ -110,4 +111,48 @@ export function exportarCSV() {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1500);
   toast('CSV generado', DB.solicitudes.length + ' servicios exportados.');
+}
+
+/**
+ * Reporte de viajes en Excel (columnas tipadas: fecha y número de verdad, no
+ * texto) con rango de fechas a elección. Lo arma el servidor
+ * (GET /api/solicitudes/exportar), así que hace falta pedir el rango antes de
+ * descargar: por eso va en un modal y no es un botón directo como el CSV.
+ */
+export function abrirExportarExcel() {
+  const html = '<p class="sub">Filtra por la fecha programada del viaje. Deja los campos vacíos para exportar todo el histórico.</p>'
+    + '<div class="row">'
+    + '<div class="field" style="margin:0"><label for="expDesde">Desde</label><input class="input" id="expDesde" type="date"></div>'
+    + '<div class="field" style="margin:0"><label for="expHasta">Hasta</label><input class="input" id="expHasta" type="date"></div>'
+    + '</div>'
+    + '<div class="err" id="eExportar"></div>'
+    + '<button class="btn btn-sm" style="margin-top:14px" onclick="confirmarExportarExcel()">Descargar Excel</button>';
+  abrirModal('Exportar viajes a Excel', html);
+}
+
+export async function confirmarExportarExcel() {
+  const desde = $('expDesde').value || '';
+  const hasta = $('expHasta').value || '';
+  if (desde && hasta && desde > hasta) {
+    $('eExportar').textContent = 'La fecha "desde" no puede ser posterior a "hasta".';
+    $('eExportar').classList.add('on');
+    return;
+  }
+  $('eExportar').classList.remove('on');
+
+  let r;
+  try {
+    r = await exportarExcel(desde, hasta);
+  } catch (e) {
+    $('eExportar').textContent = e.message;
+    $('eExportar').classList.add('on');
+    return;
+  }
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(r.blob);
+  a.download = r.nombre;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+  cerrarModal();
+  toast('Excel generado', 'Se descargó ' + r.nombre + '.');
 }

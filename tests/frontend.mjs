@@ -107,7 +107,7 @@ try {
   ok(bd.DB.totalPersonal === 212, `del padrón llega el conteo, no las fichas (${bd.DB.totalPersonal})`);
   ok(!('personal' in bd.DB), 'el padrón completo no viaja al navegador');
   ok(bd.DB.solicitudes.length === RESUMEN.servicios, `y el histórico 2026 (${bd.DB.solicitudes.length})`);
-  ok(!('pin' in bd.DB), 'la clave de logística no está en la copia del navegador');
+  ok(!('usuarios' in bd.DB), 'las cuentas de logística no están en la copia del navegador');
 
   // ------------------------------------------------------- ingreso y flujo
   console.log('\n-- ingreso --');
@@ -138,14 +138,23 @@ try {
 
   // ------------------------------------------------------------- logística
   console.log('\n-- logística --');
+  $('userInput').value = 'admin';
   $('pinInput').value = 'noesla';
   await globalThis.entrarAdmin();
   ok(!$('viewAdmin').classList.contains('on'), 'una clave incorrecta no abre la vista');
 
-  $('pinInput').value = 'logistica';
+  $('pinInput').value = 'admin';
   await globalThis.entrarAdmin();
-  ok($('viewAdmin').classList.contains('on'), 'la clave correcta sí, y se comprueba en el servidor');
+  ok($('viewAdmin').classList.contains('on'), 'el usuario y clave sembrados sí, y se comprueban en el servidor');
   ok(Number($('cntBandeja').textContent) === 1, 'la bandeja muestra el ticket recién registrado');
+  globalThis.cerrarModal();   // el aviso de "clave temporal" que abre solo el primer ingreso
+
+  console.log('\n-- usuarios de logística --');
+  ok($('tabUsuarios').style.display !== 'none', 'admin sí ve la pestaña de usuarios');
+  globalThis.tabAdmin('usuarios');
+  ok($('aUsuarios').classList.contains('on'), 'y puede abrirla');
+  await globalThis.renderUsuarios();
+  ok($('tbUsuarios').innerHTML.includes('admin'), 'la cuenta admin aparece en el listado');
 
   await globalThis.setVehiculo(TICKET, 'Motorizado');
   await globalThis.setCosto(TICKET, '25');
@@ -178,6 +187,13 @@ try {
   globalThis.renderHistorico();
   const filtrado = (($('tHist').innerHTML.match(/<tr>/g) || []).length) - 1;
   ok(filtrado > 0 && filtrado < 300, `filtrar llega al resto (${filtrado} coincidencias)`);
+
+  globalThis.abrirExportarExcel();
+  ok($('modalBody').innerHTML.includes('expDesde') && $('modalBody').innerHTML.includes('expHasta'),
+     'el modal de exportar a Excel pide un rango de fechas');
+  globalThis.cerrarModal();
+  // La descarga en sí (fetch + Blob + URL.createObjectURL) se prueba contra el
+  // servidor real en tests/api.mjs: ese lado no tiene sentido simularlo aquí.
 
   // --------------------------------------------------------------- payback
   console.log('\n-- payback --');

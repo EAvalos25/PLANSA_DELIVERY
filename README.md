@@ -49,8 +49,11 @@ PLANSA_PUERTO=8080 PLANSA_DB=D:/datos/plansa.sqlite PLANSA_UPLOADS=D:/datos/guia
 ```
 
 - **Acceso solicitante:** con un DNI del padrón, por ejemplo `73012556`.
-- **Acceso logística:** clave inicial `logistica`. Se verifica en el servidor y
-  nunca se envía al navegador. Para cambiarla hay que conocer la vigente.
+- **Acceso logística:** usuario y clave. La siembra crea la cuenta
+  `admin` / `admin` (rol admin, clave temporal): la aplicación pide cambiarla
+  al primer ingreso. Desde ahí, admin crea el resto de cuentas —rol `admin` o
+  `seguimiento`— en la pestaña **Usuarios**, con una clave temporal de un solo
+  uso que solo se muestra una vez. Ver [Usuarios y roles](#usuarios-y-roles).
 
 ---
 
@@ -71,32 +74,41 @@ backend/                     ← NODE.JS. Nada de esto llega al navegador.
       solicitudes.js           tickets, correlativo y flujo de estados
       autorizaciones.js        pedidos de acceso
       adjuntos.js              metadatos de las guías
-      ajustes.js               clave de logística y testigo de revisión
+      ajustes.js               testigo de revisión
+  usuarios/                   Cuentas de logística: quién puede ENTRAR
+    claves.js                  hash de claves (scrypt) y clave temporal
+    repositorio.js              SQL de la tabla usuarios
+    sesiones.js                 tokens en memoria (ingreso/salida)
+    middleware.js               requiereSesion / requiereRol
+    servicio.js                  reglas: ingresar, crear, resetear, (des)activar
+    rutas.js                     /api/auth/* y /api/usuarios/*
   middleware/
     subida.js                 multer → uploads/, renombrado único
     limites.js                Freno de fuerza bruta, cabeceras, qué se publica
     errores.js                Formato uniforme de errores
   rutas/
-    index.js                  La API REST completa
+    index.js                  La API REST completa (monta usuarios/rutas.js)
 
 frontend/                    ← NAVEGADOR
   index.html                  Marcado de las vistas + import map
   css/styles.css              Hoja de estilos única (claro/oscuro)
   js/
     main.js                   Arranque, listeners y puente window.*
-    auth.js                   Ingreso por DNI / clave, apertura de vistas
+    auth.js                   Ingreso por DNI / usuario+clave, apertura de vistas
     render.js                 Orquestador de repintado y sondeo
     config.js                 Constantes de la interfaz
     api/                      ← Lo único que habla con el servidor
-      cliente.js               fetch, errores, URL base
+      cliente.js               fetch, errores, URL base, token de sesión
       estado.js                Copia local del estado + escrituras
       adjuntos.js              Subida y descarga de guías
     state/ ui/ utils/          Sesión, tema y utilidades
     views/                     Una vista por pestaña
+      usuarios.js               Alta y gestión de cuentas (solo admin)
       payback/                 Pantalla del análisis payback
 
 shared/                      ← CÁLCULO PURO. Lo usan el servidor Y el navegador.
   documento.js                Validar y normalizar un DNI, sin el padrón al lado
+  exportarViajes.js           Columnas del reporte Excel (hoy solo las usa el servidor)
   payback/                    Sin DOM, sin base de datos, sin red: se verifica
     planilla.js               en Node número por número.
     flota.js  demanda.js  capacidad.js  ruta.js  devengos.js
@@ -137,10 +149,15 @@ SQLite, en un solo archivo, con `node:sqlite` incorporado en Node 22.5+. Sin
 dependencias nativas que compilar, que en Windows sin herramientas de build es
 la diferencia entre funcionar y no.
 
-Cinco tablas —`personal`, `solicitudes`, `autorizaciones`, `adjuntos`,
-`ajustes`— definidas en `backend/db/esquema.sql`. Las reglas viven en la base,
-no solo en el código: un estado que no existe o una tarifa negativa los rechaza
-SQLite con un CHECK, aunque el bug esté en la pantalla.
+Seis tablas —`personal`, `solicitudes`, `autorizaciones`, `usuarios`,
+`adjuntos`, `ajustes`— definidas en `backend/db/esquema.sql`. Las reglas viven
+en la base, no solo en el código: un estado que no existe o una tarifa negativa
+los rechaza SQLite con un CHECK, aunque el bug esté en la pantalla.
+
+`personal` y `usuarios` son universos distintos y no hay que confundirlos:
+`personal` es el padrón de RR.HH. (quién puede **pedir** un servicio, cientos
+de filas); `usuarios` son las cuentas de logística (quién puede **entrar** a
+despachar o administrar, unas pocas filas).
 
 Todo el SQL está en `backend/db/repos/`. Ninguna ruta, ninguna vista y ningún
 cálculo escriben una consulta: si mañana esto se muda a PostgreSQL, se
@@ -182,27 +199,97 @@ exponer la carpeta permitiría listarla y adivinar nombres.
 
 ## La API
 
-| | |
-|---|---|
-| `GET /api/estado` | Todo lo que la pantalla necesita, en una llamada (sin el padrón) |
-| `GET /api/revision` | El testigo, para el sondeo |
-| `POST /api/auth/logistica` | Verifica la clave (en el servidor) |
-| `GET /api/auth/solicitante/:doc` | Busca un DNI en el padrón |
-| `GET /api/personal?q=` | Busca en el padrón; sin `q` no devuelve nada |
-| `POST/DELETE /api/personal` | Alta y baja manual |
-| `GET/POST /api/solicitudes` | Listar y registrar |
-| `PATCH /api/solicitudes/:id` | Transporte y tarifa |
-| `POST /api/solicitudes/:id/avanzar` | Mueve el ticket por el flujo |
-| `GET/POST/DELETE /api/adjuntos` | Guías de entrega |
-| `GET /api/adjuntos/:id/archivo` | Descarga el binario |
-| `PUT /api/ajustes/clave` | Cambia la clave (pidiendo la vigente) |
-| `GET /api/payback` | El análisis completo, en JSON |
-| `GET /api/salud` | Estado del servidor y de la base |
+| | | Sesión |
+|---|---|---|
+| `GET /api/estado` | Todo lo que la pantalla necesita, en una llamada (sin el padrón) | — |
+| `GET /api/revision` | El testigo, para el sondeo | — |
+| `GET /api/auth/solicitante/:doc` | Busca un DNI en el padrón | — |
+| `POST /api/solicitudes` | Registra un ticket propio | — |
+| `GET /api/solicitudes/:id` | Consulta un ticket | — |
+| `POST /api/autorizaciones` | Pide alta en el padrón | — |
+| `GET /api/adjuntos` y `GET /api/adjuntos/:id/archivo` | Ver y descargar guías de entrega | — |
+| `POST /api/auth/ingresar` | Usuario + clave → token | — |
+| `POST /api/auth/salir` | Cierra el token actual | logística |
+| `GET /api/auth/yo` | Quién es, según el token | logística |
+| `PUT /api/auth/clave` | Cambia la clave propia (pidiendo la vigente) | logística |
+| `GET /api/personal?q=` | Busca en el padrón; sin `q` no devuelve nada | logística |
+| `PATCH /api/solicitudes/:id` | Transporte y tarifa | logística |
+| `POST /api/solicitudes/:id/avanzar` | Mueve el ticket por el flujo | logística |
+| `POST/DELETE /api/adjuntos` | Sube o quita una guía | logística |
+| `GET /api/autorizaciones` | Lista los pedidos pendientes | logística |
+| `GET /api/solicitudes/exportar` | Reporte de viajes en Excel, con `?desde=&hasta=` opcionales | logística |
+| `POST/DELETE /api/personal` | Alta y baja manual en el padrón | **admin** |
+| `PATCH /api/autorizaciones/:dni` | Aprueba o rechaza un pedido | **admin** |
+| `GET /api/payback` | El análisis completo, en JSON | **admin** |
+| `GET/POST /api/usuarios` | Lista y crea cuentas de logística | **admin** |
+| `POST /api/usuarios/:id/restablecer` | Nueva clave temporal | **admin** |
+| `PATCH /api/usuarios/:id` | Activa o desactiva una cuenta | **admin** |
+| `GET /api/salud` | Estado del servidor y de la base | — |
 
-Las validaciones están en el servidor, no solo en la pantalla: sin transporte no
-hay salida, sin tarifa no hay cierre, y un ticket concluido ya no se modifica.
-Confiar en que el navegador lo valide deja la puerta abierta a que un ticket se
-cierre sin costo y los indicadores mientan.
+En la columna Sesión, "logística" acepta cualquiera de los dos roles
+(`admin` o `seguimiento`); "**admin**" en negrita exige ese rol puntual. El
+control es del servidor (`backend/usuarios/middleware.js`), no de la pantalla:
+ocultar un botón evita confundir a quien no puede usarlo, pero quien llame a
+la API directo sin el rol que toca recibe igual 401 (sin sesión) o 403 (con
+sesión, pero rol insuficiente).
+
+Las validaciones de negocio también están en el servidor, no solo en la
+pantalla: sin transporte no hay salida, sin tarifa no hay cierre, y un ticket
+concluido ya no se modifica. Confiar en que el navegador lo valide deja la
+puerta abierta a que un ticket se cierre sin costo y los indicadores mientan.
+
+### Dos formas de exportar el histórico
+
+- **CSV** (botón "Descargar CSV", 100 % en el navegador): 24 columnas en
+  snake_case, todo como texto. Es el que consume Power BI / Looker Studio —
+  no se le cambió una columna al agregar el Excel, para no romper ningún
+  tablero que ya apunte a ese archivo.
+- **Excel** (botón "Exportar a Excel", `GET /api/solicitudes/exportar`, lo
+  arma el servidor con `exceljs`): las mismas columnas, pero con encabezados
+  legibles y celdas TIPADAS -fecha y número de verdad, no texto-, para
+  ordenar, sumar o armar una tabla dinámica en la propia hoja sin pasos
+  previos. Acepta `?desde=AAAA-MM-DD&hasta=AAAA-MM-DD` para acotar por la
+  fecha programada del viaje; sin ninguno de los dos, exporta todo.
+
+---
+
+## Usuarios y roles
+
+No confundir con el **padrón** (`data/padron.js` → tabla `personal`): eso es
+quién puede *pedir* un servicio, y sigue sin clave, solo con el DNI. Esto es
+quién puede *entrar a logística* — despachar, ver indicadores, administrar el
+padrón — y ahora hace falta usuario y clave para todo.
+
+| Rol | Puede |
+|---|---|
+| `admin` | Todo: bandeja, histórico, indicadores, payback, alta/baja en el padrón, resolver autorizaciones, crear y administrar usuarios. |
+| `seguimiento` | Bandeja de despacho e histórico: asignar transporte y tarifa, mover el ticket por el flujo, subir o quitar guías de entrega. Si se topa con alguien fuera del padrón, **pide autorización** (igual que hace el propio solicitante) en vez de darlo de alta directo. |
+
+Cómo se administran:
+
+- **Solo admin crea usuarios y reparte claves.** Pestaña **Usuarios** →
+  usuario + rol → se genera una clave temporal de 8 caracteres (sin `0/O` ni
+  `1/I/l`, para dictarla por teléfono o anexo sin confusiones). Se muestra
+  **una sola vez**, en un modal: el servidor solo guarda el hash (scrypt), así
+  que si se pierde, la única salida es generar otra con "Nueva clave
+  temporal".
+- **Clave temporal → cambio obligatorio en la práctica.** El servidor marca
+  `debeCambiarClave` y la pantalla lo recuerda al ingresar; el usuario la
+  cambia por la propia desde "Mi clave", junto al botón de salir.
+- **Desactivar, no borrar.** Una cuenta desactivada no puede volver a entrar y
+  pierde al instante cualquier sesión abierta (no espera a que expire el
+  token). Nadie puede desactivarse a sí mismo, para no dejar a logística sin
+  nadie con acceso por accidente.
+- **Las sesiones son tokens en memoria, sin tabla en la base**
+  (`backend/usuarios/sesiones.js`), igual que el freno de fuerza bruta:
+  duran 12 horas y se pierden si el servidor se reinicia. Es la misma decisión
+  que ya regía para el freno de intentos: simple, y de sobra para una PC que
+  se queda prendida durante el turno.
+
+La cuenta `admin`/`admin` la crea `backend/db/sembrar.js` la primera vez que
+arranca el servidor (o si la tabla `usuarios` queda sin ningún admin activo):
+es el único punto de entrada inicial, así que conviene cambiar esa clave y
+crear las cuentas de verdad antes de repartir el enlace de la red.
 
 ---
 
@@ -253,22 +340,24 @@ Lo que ya está resuelto para eso:
 | Freno de fuerza bruta | 10 intentos fallidos por IP y a esperar 5 minutos |
 | Cabeceras | `nosniff`, `X-Frame-Options`, CSP, sin `X-Powered-By` |
 | Tabla acotada | El histórico pinta 300 filas, no 1 600; el CSV sí las exporta todas |
+| Sesiones de verdad | Usuario + clave por persona (ver [Usuarios y roles](#usuarios-y-roles)); la API rechaza sin token lo que antes aceptaba de cualquiera |
 
 **Lo que sigue sin estar, y hay que saberlo antes de repartir el enlace:**
 
-- **No hay sesiones.** La clave de logística abre la vista en ese navegador,
-  pero la API no pide nada después: quien conozca la URL puede llamar a
-  `/api/personal?q=` o registrar tickets sin pasar por la pantalla de ingreso.
-  Dentro de la red de la empresa es una decisión asumida; en internet abierto,
-  no. **No expongas esto con Tailscale Funnel ni con un port forwarding**: la
-  base tiene 212 documentos de identidad reales.
 - **El tráfico va en HTTP.** Dentro del tailnet va cifrado por Tailscale; en la
-  LAN de la planta, no.
-- **Una sola clave compartida** para todo el equipo de logística, así que no
-  hay forma de saber quién hizo qué cambio.
+  LAN de la planta, no. Una clave (temporal o no) que viaje por la LAN sin
+  Tailscale de por medio se puede capturar.
+- **Los tokens de sesión son un valor fijo por 12 horas, en memoria.** Sirven
+  para esta prueba, en una red de confianza; no son cookies con flags de
+  seguridad ni tienen renovación. **No expongas esto con Tailscale Funnel ni
+  con un port forwarding**: la base tiene 212 documentos de identidad reales.
+- **El padrón sigue sin clave, a propósito.** Cualquiera con un DNI del
+  padrón registra solicitudes a su nombre; no hay forma de que finjan ser
+  logística (eso sí pide usuario y clave), pero tampoco hay forma de que
+  logística sepa si de verdad fue esa persona quien pidió el servicio.
 
-Si la prueba sale bien y esto pasa a ser permanente, el orden es: sesiones con
-usuario por persona, HTTPS, y recién ahí pensar en accesos desde fuera.
+Si la prueba sale bien y esto pasa a ser permanente, el siguiente paso es
+HTTPS, y recién ahí pensar en accesos desde fuera de la red de la empresa.
 
 ---
 

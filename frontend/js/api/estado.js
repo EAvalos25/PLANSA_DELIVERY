@@ -67,7 +67,9 @@ export async function sincronizar(onCambio) {
 }
 
 // ------------------------------------------------------------------- auth
-export const verificarClaveLogistica = clave => crear('/auth/logistica', { clave });
+export const ingresarLogistica = (usuario, clave) => crear('/auth/ingresar', { usuario, clave });
+export const salirLogistica = () => crear('/auth/salir');
+export const cambiarMiClave = (actual, nueva) => reemplazar('/auth/clave', { actual, nueva });
 export const buscarEnPadron = doc => obtener('/auth/solicitante/' + encodeURIComponent(doc));
 
 // --------------------------------------------------------------- personal
@@ -111,6 +113,25 @@ function reemplazarSolicitud(s) {
   if (i >= 0) DB.solicitudes[i] = s; else DB.solicitudes.push(s);
 }
 
+/**
+ * Reporte de viajes en Excel. Es un binario, no JSON, así que no pasa por
+ * `crear`/`obtener`: se pide la respuesta cruda para leer el archivo y el
+ * nombre que el servidor le puso en Content-Disposition.
+ */
+export async function exportarExcel(desde, hasta) {
+  const qs = [];
+  if (desde) qs.push('desde=' + encodeURIComponent(desde));
+  if (hasta) qs.push('hasta=' + encodeURIComponent(hasta));
+  const res = await obtener('/solicitudes/exportar' + (qs.length ? '?' + qs.join('&') : ''), { crudo: true });
+  if (!res.ok) {
+    let mensaje = 'Error ' + res.status + ' al exportar.';
+    try { const d = await res.json(); if (d && d.error) mensaje = d.error; } catch (e) { /* sin cuerpo JSON */ }
+    throw Object.assign(new Error(mensaje), { status: res.status });
+  }
+  const nombre = /filename="([^"]+)"/.exec(res.headers.get('content-disposition') || '');
+  return { blob: await res.blob(), nombre: nombre ? nombre[1] : 'viajes.xlsx' };
+}
+
 // --------------------------------------------------------- autorizaciones
 export async function pedirAutorizacion(dni) {
   const r = await crear('/autorizaciones', { dni });
@@ -127,5 +148,10 @@ export async function resolverAutorizacion(dni, estado) {
     .forEach(a => { a.estado = estado; });
 }
 
-// ---------------------------------------------------------------- ajustes
-export const cambiarClave = (actual, nueva) => reemplazar('/ajustes/clave', { actual, nueva });
+// ---------------------------------------------------------------- usuarios
+// Cuentas de logística (admin/seguimiento). No confundir con `personal`
+// (padrón), que es quién puede PEDIR un servicio.
+export const listarUsuarios = () => obtener('/usuarios');
+export const crearUsuarioLogistica = (usuario, rol) => crear('/usuarios', { usuario, rol });
+export const restablecerClaveUsuario = id => crear('/usuarios/' + id + '/restablecer');
+export const cambiarEstadoUsuario = (id, activo) => modificar('/usuarios/' + id, { activo });

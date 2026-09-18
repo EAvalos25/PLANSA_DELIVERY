@@ -3,6 +3,7 @@ import { renderBandeja } from './views/dispatch.js';
 import { renderHistoricoSiVisible } from './views/history.js';
 import { renderPadronSiVisible } from './views/roster.js';
 import { renderKpiSiVisible } from './views/kpi.js';
+import { renderUsuariosSiVisible } from './views/usuarios.js';
 import { renderMis } from './views/tickets.js';
 import { sincronizar as sincronizarStore } from './api/estado.js';
 
@@ -23,6 +24,7 @@ export function renderTodo() {
     renderHistoricoSiVisible();
     renderPadronSiVisible();
     renderKpiSiVisible();
+    renderUsuariosSiVisible();
   } else {
     renderMis();
   }
