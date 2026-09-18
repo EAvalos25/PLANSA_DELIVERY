@@ -24,6 +24,12 @@ process.env.PLANSA_UPLOADS = path.join(temporal, 'uploads');
 let fallos = 0;
 const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLA') + ' ' + msg); if (!cond) fallos++; };
 
+// El correlativo del primer ticket nuevo sale del propio histórico, para que
+// actualizar la planilla no obligue a retocar la prueba.
+const { RESUMEN } = await mod('data/historico.js');
+const NUM = RESUMEN.servicios + 1;
+const TICKET = 'REQ-' + String(NUM).padStart(3, '0');
+
 const { iniciar } = await import('../backend/servidor.js');
 const servidor = iniciar({ puerto: 0, silencioso: true });
 await new Promise(r => servidor.once('listening', r));
@@ -98,8 +104,9 @@ try {
   ok(intervalos.includes(2500) && intervalos.includes(60000), 'quedan armados los dos relojes de la app');
 
   const bd = await mod('frontend/js/api/estado.js');
-  ok(bd.DB.personal.length === 212, `el padrón vino del servidor (${bd.DB.personal.length})`);
-  ok(bd.DB.solicitudes.length === 1386, `y el histórico 2026 (${bd.DB.solicitudes.length})`);
+  ok(bd.DB.totalPersonal === 212, `del padrón llega el conteo, no las fichas (${bd.DB.totalPersonal})`);
+  ok(!('personal' in bd.DB), 'el padrón completo no viaja al navegador');
+  ok(bd.DB.solicitudes.length === RESUMEN.servicios, `y el histórico 2026 (${bd.DB.solicitudes.length})`);
   ok(!('pin' in bd.DB), 'la clave de logística no está en la copia del navegador');
 
   // ------------------------------------------------------- ingreso y flujo
@@ -118,15 +125,15 @@ try {
   $('fHora').value = '10:00';
   globalThis.setAccion('Entregar');
   await globalThis.enviarSolicitud();
-  ok($('okTitle').textContent === 'Ticket REQ-1387 registrado',
+  ok($('okTitle').textContent === 'Ticket ' + TICKET + ' registrado',
      'la solicitud se guarda en SQLite y vuelve con su correlativo: ' + $('okTitle').textContent);
 
-  const guardada = await (await fetch('/api/solicitudes/REQ-1387')).json();
+  const guardada = await (await fetch('/api/solicitudes/' + TICKET)).json();
   ok(guardada.motivo === 'Entrega de facturas del mes', 'y está de verdad en la base, no solo en pantalla');
 
-  $('qTicket').value = '1387';
+  $('qTicket').value = String(NUM);
   globalThis.consultarTicket();
-  ok($('resTicket').innerHTML.includes('REQ-1387'), 'el seguimiento por número la encuentra');
+  ok($('resTicket').innerHTML.includes(TICKET), 'el seguimiento por número la encuentra');
   globalThis.salir();
 
   // ------------------------------------------------------------- logística
@@ -140,19 +147,37 @@ try {
   ok($('viewAdmin').classList.contains('on'), 'la clave correcta sí, y se comprueba en el servidor');
   ok(Number($('cntBandeja').textContent) === 1, 'la bandeja muestra el ticket recién registrado');
 
-  await globalThis.setVehiculo('REQ-1387', 'Motorizado');
-  await globalThis.setCosto('REQ-1387', '25');
-  await globalThis.avanzar('REQ-1387');
-  const enRuta = await (await fetch('/api/solicitudes/REQ-1387')).json();
+  await globalThis.setVehiculo(TICKET, 'Motorizado');
+  await globalThis.setCosto(TICKET, '25');
+  await globalThis.avanzar(TICKET);
+  const enRuta = await (await fetch('/api/solicitudes/' + TICKET)).json();
   ok(enRuta.estado === 'En tránsito' && enRuta.vehiculo === 'Motorizado',
      'asignar transporte y avanzar quedó guardado en la base');
 
   $('qPadron').value = 'avalos';
-  globalThis.renderPadron();
-  ok($('tbPadron').innerHTML.includes('AVALOS VALDIVIA'), 'el padrón se busca por apellido');
+  await globalThis.renderPadron();
+  ok($('tbPadron').innerHTML.includes('AVALOS VALDIVIA'), 'el padrón se busca por apellido, contra el servidor');
   $('qPadron').value = '';
-  globalThis.renderPadron();
+  await globalThis.renderPadron();
   ok(!$('tbPadron').innerHTML.includes('AVALOS'), 'y sin búsqueda no lista a nadie');
+  ok(Number($('cntPadron').textContent) === 212, `el conteo del padrón sale del servidor (${$('cntPadron').textContent})`);
+
+  // -------------------------------------------------------------- histórico
+  console.log('\n-- histórico --');
+  $('qHist').value = '';
+  globalThis.renderHistorico();
+  const hist = $('tHist').innerHTML;
+  const filasPintadas = (hist.match(/<tr>/g) || []).length - 1;   // menos la cabecera
+  ok(filasPintadas === 300,
+     `no vuelca las ${RESUMEN.servicios} filas de golpe: pinta ${filasPintadas}`);
+  ok(hist.includes('Se muestran los 300'), 'y avisa cuántas está mostrando de cuántas');
+  ok(Number($('cntHist').textContent) === RESUMEN.servicios + 1,
+     'el contador sigue diciendo el total de verdad');
+
+  $('qHist').value = 'prochilca';
+  globalThis.renderHistorico();
+  const filtrado = (($('tHist').innerHTML.match(/<tr>/g) || []).length) - 1;
+  ok(filtrado > 0 && filtrado < 300, `filtrar llega al resto (${filtrado} coincidencias)`);
 
   // --------------------------------------------------------------- payback
   console.log('\n-- payback --');

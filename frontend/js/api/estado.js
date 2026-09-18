@@ -16,9 +16,16 @@ import { obtener, crear, modificar, reemplazar, borrar } from './cliente.js';
  *     recarga todo cuando de verdad cambió algo en otra pestaña o en otra PC.
  */
 
-/** Copia local del estado. La leen las vistas; nadie la escribe a mano. */
+/**
+ * Copia local del estado. La leen las vistas; nadie la escribe a mano.
+ *
+ * El padrón NO está aquí, a propósito: son datos personales de 212 personas y
+ * la pantalla nunca necesita más de una ficha a la vez. Se piden al servidor
+ * cuando hacen falta (`buscarPersonal`, `buscarEnPadron`) y de él solo se
+ * guarda el total, que es lo único que se muestra.
+ */
 export let DB = {
-  personal: [],
+  totalPersonal: 0,
   solicitudes: [],
   autorizaciones: [],
   adjuntos: [],
@@ -30,7 +37,7 @@ let revisionActual = null;
 export async function cargar() {
   const estado = await obtener('/estado');
   DB = {
-    personal: estado.personal,
+    totalPersonal: estado.totalPersonal,
     solicitudes: estado.solicitudes,
     autorizaciones: estado.autorizaciones,
     adjuntos: estado.adjuntos,
@@ -66,7 +73,7 @@ export const buscarEnPadron = doc => obtener('/auth/solicitante/' + encodeURICom
 // --------------------------------------------------------------- personal
 export async function agregarPersona(datos) {
   const p = await crear('/personal', datos);
-  DB.personal.push(p);
+  DB.totalPersonal++;
   DB.autorizaciones
     .filter(a => a.dni === p.dni && a.estado === 'Pendiente')
     .forEach(a => { a.estado = 'Aprobada'; });
@@ -75,7 +82,7 @@ export async function agregarPersona(datos) {
 
 export async function quitarPersona(dni) {
   await borrar('/personal/' + encodeURIComponent(dni));
-  DB.personal = DB.personal.filter(p => p.dni !== dni);
+  DB.totalPersonal--;
 }
 
 export const buscarPersonal = q => obtener('/personal?q=' + encodeURIComponent(q));

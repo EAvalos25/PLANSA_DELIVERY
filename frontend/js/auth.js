@@ -1,10 +1,10 @@
 import { $ } from './utils/dom.js';
 import { hoyISO } from './utils/format.js';
 import { toast } from './utils/toast.js';
-import { DB, pedirAutorizacion as apiPedirAutorizacion, verificarClaveLogistica } from './api/estado.js';
+import { pedirAutorizacion as apiPedirAutorizacion, verificarClaveLogistica,
+         buscarEnPadron } from './api/estado.js';
 import { setSesion, sesion } from './state/sessionState.js';
-import { buscarPersona } from './views/roster.js';
-import { normalizarDoc, DOC_VALIDO } from '#data/padron.js';
+import { normalizarDoc, DOC_VALIDO } from '#shared/documento.js';
 import { tabUser, tabAdmin } from './views/tabs.js';
 import { toggleOrigen, refrescarHoras, resetAccion } from './views/requestForm.js';
 import { renderMis } from './views/tickets.js';
@@ -14,7 +14,7 @@ import { renderTodo } from './render.js';
  * Inicio de sesión (solicitante por DNI / logística por PIN), pedidos de
  * autorización y apertura/cierre de las vistas principales.
  */
-export function entrarSolicitante() {
+export async function entrarSolicitante() {
   // El documento se normaliza antes de validar: quien tenga el DNI con 7
   // dígitos (porque el sistema de RR.HH. recortó el cero inicial) entra
   // igual, lo escriba con cero o sin él.
@@ -29,8 +29,17 @@ export function entrarSolicitante() {
     box.classList.add('on');
     return;
   }
-  const p = buscarPersona(dni);
-  if (!p) {
+  // La ficha la busca el servidor: el navegador no tiene el padrón.
+  let p;
+  try {
+    p = await buscarEnPadron(dni);
+  } catch (e) {
+    if (e.status !== 404) {
+      $('loginAlertTitle').textContent = 'No se pudo verificar el documento';
+      $('loginAlertMsg').textContent = e.message;
+      box.classList.add('on');
+      return;
+    }
     $('loginAlertTitle').textContent = 'Acceso denegado. Solicitar autorización a Logística';
     $('loginAlertMsg').textContent = 'El documento ' + dni + ' no figura en la base de personal de Plásticos Nacionales, así que no es posible registrar solicitudes con este DNI.';
     $('loginAlertActions').style.display = 'block';

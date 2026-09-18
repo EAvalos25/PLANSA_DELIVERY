@@ -1,21 +1,27 @@
 import { sesion } from './state/sessionState.js';
 import { renderBandeja } from './views/dispatch.js';
-import { renderHistorico } from './views/history.js';
-import { renderPadron } from './views/roster.js';
+import { renderHistoricoSiVisible } from './views/history.js';
+import { renderPadronSiVisible } from './views/roster.js';
 import { renderKpiSiVisible } from './views/kpi.js';
 import { renderMis } from './views/tickets.js';
 import { sincronizar as sincronizarStore } from './api/estado.js';
 
 /**
- * Orquestador de render: vuelve a pintar todo lo que corresponde a la
- * sesión activa (admin o solicitante).
+ * Orquestador de render: vuelve a pintar lo que corresponde a la sesión
+ * activa (admin o solicitante).
+ *
+ * Solo la bandeja se repinta siempre: es la pestaña de trabajo y además lleva
+ * el contador que avisa de lo que entró. Las demás se repintan únicamente si
+ * están a la vista. Pintarlas todas costaba, en cada cambio que llegara de
+ * otra PC, una tabla de mil quinientas filas y una consulta al padrón que
+ * nadie estaba mirando.
  */
 export function renderTodo() {
   if (!sesion) return;
   if (sesion.tipo === 'admin') {
     renderBandeja();
-    renderHistorico();
-    renderPadron();
+    renderHistoricoSiVisible();
+    renderPadronSiVisible();
     renderKpiSiVisible();
   } else {
     renderMis();

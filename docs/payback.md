@@ -51,19 +51,23 @@ abrir el navegador. Un solo archivo, dos consumidores, cero duplicación.
 
 ## Los números, con la data real
 
-Base de comparación: **1 386 servicios de 2026** registrados en el histórico.
+Base de comparación: **1 600 servicios de 2026** registrados en el histórico
+(15 de enero al 15 de septiembre, S/ 35 234,60).
 
 | | |
 |---|---|
-| Gasto mensual en courier | **S/ 4 947** (promedio de mayo, junio y julio) |
-| Costo promedio por viaje | S/ 23,05 |
-| Encargos por día, lun-vie | 8,7 |
+| Gasto mensual en courier | **S/ 5 064** (promedio de junio, julio y agosto) |
+| Costo promedio por viaje | S/ 22,95 |
+| Encargos por día, lun-vie | 9,0 |
 | Encargos el sábado | 3,3 |
 | Día cargado (10% de los días lo supera) | 12 |
 | Máximo medido en un día | 20 |
+| Días con movimiento medidos | 197 |
 
-Agosto queda fuera del promedio porque la planilla corta el día 19 y el mes
-está incompleto; incluirlo haría parecer que se gasta menos.
+Septiembre queda fuera del promedio porque la planilla corta el día 15 y el mes
+está incompleto; incluirlo haría parecer que se gasta menos. El promedio se
+toma siempre de los tres últimos meses cerrados, así que se mueve solo cuando
+se carga una planilla más nueva.
 
 ### Los tres escenarios
 
@@ -74,17 +78,18 @@ Con el bono tratado como remunerativo (el supuesto conservador) y la Honda XR
 |---|---:|---:|---:|
 | Planilla total | 2 948 | 2 527 | 2 744 |
 | Gasto de moto | — | 681 | — |
-| Cobertura de vacaciones | 430 | 430 | 86 |
-| Courier para días cargados | 465 | 465 | 465 |
-| **Costo mensual** | **3 844** | **4 104** | **3 296** |
-| **Ahorro frente al courier** | **1 103** | **843** | **1 651** |
-| Ahorro al año | 13 236 | 10 117 | 19 815 |
+| Cobertura de vacaciones | 440 | 440 | 88 |
+| Courier para días cargados | 547 | 547 | 547 |
+| **Costo mensual** | **3 935** | **4 196** | **3 379** |
+| **Ahorro frente al courier** | **1 128** | **868** | **1 684** |
+| Ahorro al año | 13 538 | 10 418 | 20 211 |
 | Inversión inicial | — | 12 025 | — |
-| Retorno de la inversión | — | 12 meses | — |
+| Retorno de la inversión | — | 14 meses | — |
 
-El retorno de 12 meses no sale de dividir inversión entre ahorro promedio: sale
-de recorrer el flujo real mes a mes desde la fecha de ingreso, que es lo que se
-explica más abajo.
+Esos 14 meses son la cuenta simple: inversión entre ahorro mensual. El módulo
+también calcula el retorno recorriendo el flujo real mes a mes desde la fecha
+de ingreso, y ahí cambia —12 o 13 meses según cuándo entre— porque el primer
+año no paga las mismas gratificaciones. Es lo que se explica más abajo.
 
 Los tres salen más baratos que tercerizar. El tercero es el más barato y el
 único sin riesgo alto.
@@ -119,7 +124,7 @@ mueven.
 ### 2. Sí alcanza una sola moto, pero solo con programación
 
 Con los encargos agrupados por zona, un día promedio ocupa el **94%** del
-tiempo útil. El techo son **9,4 encargos al día** y hoy se hacen 8,7.
+tiempo útil. El techo son **9,3 encargos al día** y hoy se hacen 9,0.
 
 Atendiendo cada pedido por separado, en cuanto llega, el mismo volumen exige el
 **243%** de la jornada: dos motorizados y medio.
@@ -150,7 +155,7 @@ en la calle.
 
 ### 3. El día cargado se desborda, y está previsto
 
-El promedio es 8,7, pero el 10% de los días pasa de 12 y hubo días de 20. Con 12
+El promedio es 9,0, pero el 10% de los días pasa de 12 y hubo días de 20. Con 12
 encargos el uso sube a 125%: no entra. Esos días el excedente sigue saliendo por
 courier, y por eso hay una línea de S/ 465 al mes en los tres escenarios.
 
@@ -173,8 +178,8 @@ calcula solo. Poniendo la fecha, la tabla muestra mes por mes qué se paga:
 
 | Ingreso | Costo del primer año | Retorno de la inversión (escenario 2) |
 |---|---:|---:|
-| 1 de octubre de 2026 | S/ 47 293 | 12 meses |
-| 1 de enero de 2027 | S/ 48 799 | 14 meses |
+| 1 de octubre de 2026 | S/ 48 390 | 12 meses |
+| 1 de enero de 2027 | S/ 49 896 | 13 meses |
 
 Entrar en octubre sale más barato el primer año porque no se alcanza la
 gratificación de julio y la de diciembre se cobra a medias (3 de 6 meses). No es

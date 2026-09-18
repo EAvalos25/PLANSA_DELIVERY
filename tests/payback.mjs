@@ -29,7 +29,7 @@ const { analizarDemanda } = await mod('shared/payback/demanda.js');
 const { minutosRequeridos, minutosDisponibles } = await mod('shared/payback/capacidad.js');
 const { construir } = await mod('shared/payback/escenarios.js');
 const { comparar } = await mod('shared/payback/payback.js');
-const { historico2026 } = await mod('data/historico.js');
+const { historico2026, RESUMEN } = await mod('data/historico.js');
 
 // ---------------------------------------------------------------- jornada
 console.log('\n-- jornada --');
@@ -191,7 +191,8 @@ ok(enero.primerAnio.mesMasCaro.mes === 7 || enero.primerAnio.mesMasCaro.mes === 
 // --------------------------------------------------------------- demanda
 console.log('\n-- demanda real --');
 const d = analizarDemanda(historico2026());
-ok(d.hay && d.totalViajes === 1386, `lee los 1386 servicios del histórico (${d.totalViajes})`);
+ok(d.hay && d.totalViajes === RESUMEN.servicios,
+   `lee los ${RESUMEN.servicios} servicios del histórico (${d.totalViajes})`);
 ok(d.recientes.meses.length === 3, `promedia 3 meses completos: ${d.recientes.meses.join(', ')}`);
 ok(!d.recientes.meses.includes(d.hasta), 'descarta el último mes, que está incompleto');
 ok(d.recientes.gastoMensual > 4000 && d.recientes.gastoMensual < 6000,

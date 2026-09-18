@@ -3,50 +3,30 @@ import { fechaHora } from '../utils/format.js';
 import { toast } from '../utils/toast.js';
 import * as api from '../api/estado.js';
 import { DB } from '../api/estado.js';
-import { normalizarDoc, DOC_VALIDO } from '#data/padron.js';
+import { normalizarDoc, DOC_VALIDO } from '#shared/documento.js';
 
 /**
  * Padrón de personal habilitado y autorizaciones pendientes de acceso.
- */
-
-/**
- * Busca en el padrón por documento. Compara en forma canónica (ver
- * `normalizarDoc`), así encuentra igual a quien tiene el DNI registrado con el
- * cero inicial recortado o a quien lo escribe sin él.
- */
-export function buscarPersona(doc) {
-  const buscado = normalizarDoc(doc);
-  if (!buscado) return null;
-  return DB.personal.find(p => normalizarDoc(p.dni) === buscado) || null;
-}
-
-/** Texto sobre el que busca el padrón, sin tildes para que 'nunez' encuentre a 'NÚÑEZ'. */
-function textoBuscable(p) {
-  return [p.dni, normalizarDoc(p.dni), p.nombre, p.cargo, p.area]
-    .join(' ').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-}
-
-/**
- * Personas que coinciden con lo buscado. Cada palabra escrita debe aparecer
- * en la ficha, sin importar el orden: así 'lopez deyna' encuentra a
- * 'DEYNA LOPEZ ABARRANCA' igual que 'deyna lopez'.
  *
- * Devuelve null cuando no hay búsqueda: el padrón completo no se muestra.
+ * La búsqueda la resuelve el servidor, no esta pantalla. Antes el navegador
+ * tenía una copia del padrón completo y filtraba sobre ella, lo que dejaba los
+ * 212 nombres con su DNI a la vista de cualquiera que abriera la consola: la
+ * tabla no los listaba, pero los datos igual habían viajado. Ahora solo llega
+ * lo que se busca, y el conteo total viene como número.
  */
-function filtrarPadron(texto) {
-  const q = String(texto || '').trim().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
-  if (q.length < 2) return null;
-  const palabras = q.split(/\s+/);
-  return DB.personal.filter(p => {
-    const t = textoBuscable(p);
-    return palabras.every(w => t.includes(w));
-  });
+
+/** Marca de la búsqueda en curso, para que una respuesta lenta no pise a otra. */
+let ultimaBusqueda = 0;
+
+/** Repinta solo si la pestaña está a la vista: si no, es una consulta de más. */
+export function renderPadronSiVisible() {
+  if ($('aPadron').classList.contains('on')) return renderPadron();
 }
 
-export function renderPadron() {
+export async function renderPadron() {
   const pend = DB.autorizaciones.filter(a => a.estado === 'Pendiente');
   $('cntAut').textContent = pend.length;
-  $('cntPadron').textContent = DB.personal.length;
+  $('cntPadron').textContent = DB.totalPersonal;
 
   $('listaAut').innerHTML = pend.length ? pend.map(a =>
     '<div class="aut"><div><div class="aut-dni">' + esc(a.dni) + '</div>'
@@ -55,15 +35,29 @@ export function renderPadron() {
     + '<button class="btn btn-sm btn-ghost" onclick="rechazarAut(\'' + a.dni + '\')">Rechazar</button></div></div>'
   ).join('') : '<div class="muted small">Sin pedidos pendientes.</div>';
 
-  // El padrón no se lista entero: son datos personales de 212 colaboradores y
-  // solo se muestran las fichas que logística busca expresamente.
-  const filas = filtrarPadron($('qPadron').value);
   const vacio = m => '<tr><td colspan="5" class="muted small" style="padding:18px 12px">' + m + '</td></tr>';
-  if (filas === null) {
+  const q = String($('qPadron').value || '').trim();
+  const turno = ++ultimaBusqueda;
+
+  // Sin búsqueda no se pide nada: el padrón completo no se muestra ni se trae.
+  if (q.length < 2) {
     $('cntPadronVista').textContent = '—';
     $('tbPadron').innerHTML = vacio('Escribe un documento, un nombre o un apellido para ver su ficha.');
     return;
   }
+
+  let filas;
+  try {
+    filas = await api.buscarPersonal(q);
+  } catch (e) {
+    if (turno !== ultimaBusqueda) return;
+    $('cntPadronVista').textContent = '—';
+    $('tbPadron').innerHTML = vacio('No se pudo buscar: ' + esc(e.message));
+    return;
+  }
+  // Mientras llegaba la respuesta el usuario siguió escribiendo: la descartamos.
+  if (turno !== ultimaBusqueda) return;
+
   $('cntPadronVista').textContent = filas.length;
   $('tbPadron').innerHTML = filas.length ? filas.map(p =>
     '<tr><td class="tk" style="color:var(--text)">' + esc(p.dni) + '</td><td>' + esc(p.nombre) + '</td>'

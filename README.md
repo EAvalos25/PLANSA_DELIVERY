@@ -17,7 +17,8 @@ npm start       # http://localhost:3000
 ```
 
 La primera vez se crea `plansa.sqlite` y se siembra con el padrón de RR.HH.
-(212 personas) y el histórico real de 2026 (1 386 servicios, S/ 30 264,60).
+(212 personas) y el histórico real de 2026: **1 600 servicios del 15 de enero al
+15 de septiembre, S/ 35 234,60**.
 
 ```bash
 npm run dev            # recarga al guardar
@@ -25,7 +26,23 @@ npm test               # las tres suites de pruebas
 npm run db:reiniciar   # vacía y vuelve a sembrar la base
 ```
 
-Para mover la base o las subidas a un disco de red:
+Al arrancar imprime por qué direcciones se llega, incluida la de Tailscale:
+
+```
+  PLANSA Delivery
+  en esta PC   http://localhost:3000
+  en la red    http://100.93.169.28:3000   (Tailscale)
+  en la red    http://192.168.0.10:3000
+```
+
+Variables de entorno, para mover la base a un disco de red o cerrar el acceso:
+
+| | |
+|---|---|
+| `PLANSA_PUERTO` | Puerto. Por defecto 3000. |
+| `PLANSA_HOST` | Interfaz. Por defecto todas; `127.0.0.1` lo deja solo en esta PC. |
+| `PLANSA_DB` | Archivo SQLite. |
+| `PLANSA_UPLOADS` | Carpeta de las guías. |
 
 ```bash
 PLANSA_PUERTO=8080 PLANSA_DB=D:/datos/plansa.sqlite PLANSA_UPLOADS=D:/datos/guias npm start
@@ -57,6 +74,7 @@ backend/                     ← NODE.JS. Nada de esto llega al navegador.
       ajustes.js               clave de logística y testigo de revisión
   middleware/
     subida.js                 multer → uploads/, renombrado único
+    limites.js                Freno de fuerza bruta, cabeceras, qué se publica
     errores.js                Formato uniforme de errores
   rutas/
     index.js                  La API REST completa
@@ -78,15 +96,16 @@ frontend/                    ← NAVEGADOR
       payback/                 Pantalla del análisis payback
 
 shared/                      ← CÁLCULO PURO. Lo usan el servidor Y el navegador.
+  documento.js                Validar y normalizar un DNI, sin el padrón al lado
   payback/                    Sin DOM, sin base de datos, sin red: se verifica
     planilla.js               en Node número por número.
     flota.js  demanda.js  capacidad.js  ruta.js  devengos.js
     escenarios.js  payback.js
 
 data/                        ← DATOS DE REFERENCIA (código versionado)
-  padron.js                   Las 212 personas de RR.HH.
+  padron.js                   Las 212 personas de RR.HH.     ← NO se publica
+  historico.js                Los 1 600 servicios de 2026    ← NO se publica
   destinos.js                 Destinos frecuentes + tarifa de referencia
-  historico.js                Los 1 386 servicios de 2026
   payback/                    Supuestos del análisis: jornada, ley, motos, zonas
 
 uploads/                     ← Guías de entrega subidas (fuera de git)
@@ -165,7 +184,7 @@ exponer la carpeta permitiría listarla y adivinar nombres.
 
 | | |
 |---|---|
-| `GET /api/estado` | Todo lo que la pantalla necesita, en una llamada |
+| `GET /api/estado` | Todo lo que la pantalla necesita, en una llamada (sin el padrón) |
 | `GET /api/revision` | El testigo, para el sondeo |
 | `POST /api/auth/logistica` | Verifica la clave (en el servidor) |
 | `GET /api/auth/solicitante/:doc` | Busca un DNI en el padrón |
@@ -196,18 +215,60 @@ cierre sin costo y los indicadores mientan.
   7 dígitos, que el sistema de RR.HH. entrega sin el cero inicial, se completan
   a 8. La persona entra escriba `8161848` o `08161848`. Los de 9 dígitos son
   carnés de extranjería y se respetan tal cual.
-- **El padrón no se lista en pantalla.** Son datos personales de todo el
-  personal: la tabla aparece vacía y solo muestra las fichas que logística
-  busca. La API hace lo mismo: `GET /api/personal` sin búsqueda no devuelve a
-  nadie.
+- **El padrón no sale del servidor.** Son datos personales de todo el personal.
+  La tabla aparece vacía y solo muestra las fichas que logística busca; la
+  búsqueda la resuelve el servidor, ficha por ficha. `GET /api/estado` manda el
+  conteo, no la lista, y `/data/padron.js` no se publica. Antes el navegador
+  recibía el padrón completo para filtrarlo en local: la tabla no lo mostraba,
+  pero bastaba abrir la consola para leer los 212 documentos.
 - **Nada de datos inventados.** La base arranca con el histórico real de 2026,
-  cargado como concluido. Lo que la planilla no registraba —hora, vehículo,
-  contacto, tiempos del flujo— se deja vacío en vez de rellenarse. Cada servicio
-  lleva `fuente` (`historico` o `app`).
-- **Sin autenticación de verdad.** Está pensado para la red interna de la
-  planta. La puerta es la clave de logística. Si esto sale a internet, lo
-  primero que hay que agregar son sesiones.
+  cargado como concluido. Lo que la planilla no registraba —vehículo, contacto,
+  teléfono— se deja vacío en vez de rellenarse. Cada servicio lleva `fuente`
+  (`historico` o `app`).
+- **La hora del histórico es la programada, no la medida.** La planilla anota
+  una hora de inicio y una de salida, pero el 89 % de las filas declara
+  exactamente 60 minutos y el 92 % empieza justo cuando termina la anterior:
+  es la grilla de la agenda. La de inicio se conserva como hora programada; los
+  tiempos del flujo (`tsTransito`, `tsConcluido`) siguen vacíos y se llenan con
+  los tickets que se registren en la app. La tarde venía en formato de 12 horas
+  sin avisarlo y se normalizó a 24 por día, siguiendo el orden de anotación.
 - No incluye IGV ni otros impuestos: es un registro operativo interno.
+
+---
+
+## Una prueba con gente conectada
+
+Para que varias personas entren a la vez basta con dejar el servidor corriendo
+y pasarles una de las direcciones que imprime al arrancar. Sobre Tailscale
+funciona sin abrir nada en el router: quien esté en la red de la empresa entra
+con la IP `100.x`.
+
+Lo que ya está resuelto para eso:
+
+| | |
+|---|---|
+| Respuestas comprimidas | El estado inicial baja de ~1 MB a ~70 KB |
+| El padrón no viaja | Solo el conteo; las fichas se piden de a una |
+| `data/` cerrado | Solo se publica lo declarado en `CONFIG.datosPublicos` |
+| Freno de fuerza bruta | 10 intentos fallidos por IP y a esperar 5 minutos |
+| Cabeceras | `nosniff`, `X-Frame-Options`, CSP, sin `X-Powered-By` |
+| Tabla acotada | El histórico pinta 300 filas, no 1 600; el CSV sí las exporta todas |
+
+**Lo que sigue sin estar, y hay que saberlo antes de repartir el enlace:**
+
+- **No hay sesiones.** La clave de logística abre la vista en ese navegador,
+  pero la API no pide nada después: quien conozca la URL puede llamar a
+  `/api/personal?q=` o registrar tickets sin pasar por la pantalla de ingreso.
+  Dentro de la red de la empresa es una decisión asumida; en internet abierto,
+  no. **No expongas esto con Tailscale Funnel ni con un port forwarding**: la
+  base tiene 212 documentos de identidad reales.
+- **El tráfico va en HTTP.** Dentro del tailnet va cifrado por Tailscale; en la
+  LAN de la planta, no.
+- **Una sola clave compartida** para todo el equipo de logística, así que no
+  hay forma de saber quién hizo qué cambio.
+
+Si la prueba sale bien y esto pasa a ser permanente, el orden es: sesiones con
+usuario por persona, HTTPS, y recién ahí pensar en accesos desde fuera.
 
 ---
 

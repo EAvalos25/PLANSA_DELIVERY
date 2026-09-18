@@ -229,18 +229,10 @@ export const PERSONAL = [
   { dni: "47490835", nombre: "NILTON ERNESTO SEGOVIA ZUÑIGA", cargo: "AYUDANTE DE PRODUCCION", area: "Producción" }
 ];
 
-/** Documento aceptado: DNI de 8 dígitos o carné de extranjería de 9. */
-export const DOC_VALIDO = /^[0-9]{8,9}$/;
-
-/**
- * Deja un documento en su forma canónica: solo dígitos y, si viene corto
- * (7 dígitos porque se perdió el cero inicial), completado a 8. Los carnés de
- * extranjería, de 9 dígitos, se devuelven sin tocar.
- */
-export function normalizarDoc(valor) {
-  const d = String(valor || '').replace(/[^0-9]/g, '');
-  return d.length && d.length < 8 ? d.padStart(8, '0') : d;
-}
+// Las reglas del documento viven en shared/documento.js: el navegador las
+// necesita en cada ingreso y no debe descargarse este archivo para tenerlas.
+// Se reexportan para no romper a quien ya las importaba desde aquí.
+export { DOC_VALIDO, normalizarDoc } from '#shared/documento.js';
 
 /** Copia del padrón lista para guardar en la base. */
 export function padronInicial() {

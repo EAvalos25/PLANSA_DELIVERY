@@ -35,6 +35,22 @@ const COLUMNAS = [
   ['horas_transito', s => { const h = horasEntre(s.tsTransito, s.tsConcluido); return h != null ? h.toFixed(2) : ''; }]
 ];
 
+/**
+ * Cuántas filas se pintan como máximo.
+ *
+ * El histórico pasa de mil quinientos servicios y crece cada día. Volcarlos
+ * todos son ~20 000 celdas en el DOM, y la tabla se repinta cada vez que
+ * alguien cambia algo desde otra PC: el navegador se traba unos segundos para
+ * mostrar filas que nadie va a leer. Se pintan las más recientes y el resto se
+ * alcanza filtrando, que es como se usa de verdad. El CSV sí exporta todo.
+ */
+const MAX_FILAS = 300;
+
+/** Repinta solo si la pestaña está a la vista, como hace el panel de indicadores. */
+export function renderHistoricoSiVisible() {
+  if ($('aHistorico').classList.contains('on')) renderHistorico();
+}
+
 export function renderHistorico() {
   $('cntHist').textContent = DB.solicitudes.length;
   const q = ($('qHist').value || '').toLowerCase().trim();
@@ -45,6 +61,10 @@ export function renderHistorico() {
     $('tHist').innerHTML = '<div class="empty"><strong>Sin coincidencias</strong>Prueba con otro ticket, solicitante o destino.</div>';
     return;
   }
+  const coincidencias = lista.length;
+  const recortada = coincidencias > MAX_FILAS;
+  if (recortada) lista = lista.slice(0, MAX_FILAS);
+
   const filas = lista.map(s => {
     const he = horasEntre(s.tsEspera, s.tsTransito);
     const ht = horasEntre(s.tsTransito, s.tsConcluido);
@@ -63,10 +83,17 @@ export function renderHistorico() {
       + '<td><button class="btn btn-sm btn-ghost" onclick="verDetalle(\'' + s.id + '\')">Ver</button></td>'
       + '</tr>';
   }).join('');
+  const aviso = recortada
+    ? '<div class="hint" style="padding:10px 12px">Se muestran los ' + MAX_FILAS
+      + ' servicios más recientes de ' + coincidencias
+      + ' que coinciden. Filtra por ticket, solicitante o destino para llegar al resto; '
+      + 'el CSV los exporta todos.</div>'
+    : '';
+
   $('tHist').innerHTML = '<table><thead><tr>'
     + '<th>Ticket</th><th>Registro</th><th>Solicitante</th><th>Servicio</th><th>Origen</th><th>Destino</th>'
     + '<th>Transporte</th><th class="num">Costo S/</th><th class="num">Espera h</th><th class="num">Tránsito h</th><th>Estado</th><th></th>'
-    + '</tr></thead><tbody>' + filas + '</tbody></table>';
+    + '</tr></thead><tbody>' + filas + '</tbody></table>' + aviso;
 }
 
 export function exportarCSV() {

@@ -22,6 +22,11 @@ process.env.PLANSA_PUERTO = '0';                 // puerto libre que elija el si
 
 const { iniciar } = await import('../backend/servidor.js');
 const { nombreUnico, marcaDeTiempo } = await import('../backend/middleware/subida.js');
+// Las cifras del histórico se leen de la propia fuente: al actualizar la
+// planilla las pruebas siguen valiendo sin tocar un número a mano.
+const { RESUMEN } = await import('#data/historico.js');
+const SEMBRADOS = RESUMEN.servicios;
+const SIGUIENTE = 'REQ-' + String(SEMBRADOS + 1).padStart(3, '0');
 
 let fallos = 0;
 const ok = (cond, msg) => { console.log((cond ? '  ok   ' : '  FALLA') + ' ' + msg); if (!cond) fallos++; };
@@ -50,13 +55,15 @@ try {
   const salud = await api('GET', '/api/salud');
   ok(salud.status === 200 && salud.datos.ok, 'el servidor responde');
   ok(salud.datos.personal === 212, `la base se sembró con el padrón (${salud.datos.personal} personas)`);
-  ok(salud.datos.solicitudes === 1386, `y con el histórico 2026 (${salud.datos.solicitudes} servicios)`);
+  ok(salud.datos.solicitudes === SEMBRADOS, `y con el histórico 2026 (${salud.datos.solicitudes} servicios)`);
   ok(fs.existsSync(process.env.PLANSA_DB), 'el archivo SQLite existe en disco');
 
   const estado = await api('GET', '/api/estado');
   ok(estado.status === 200, 'GET /api/estado responde');
-  ok(estado.datos.personal.length === 212 && estado.datos.solicitudes.length === 1386,
-     'el estado trae padrón e histórico completos');
+  ok(estado.datos.totalPersonal === 212 && estado.datos.solicitudes.length === SEMBRADOS,
+     'el estado trae el histórico completo y el conteo del padrón');
+  ok(estado.datos.personal === undefined,
+     'y NO trae el padrón: son datos personales que la pantalla no necesita en bloque');
   ok(estado.datos.destinos.length > 0, 'y el catálogo de destinos con sus tarifas');
   ok(!('pin' in estado.datos) && !JSON.stringify(estado.datos).includes('logistica'),
      'la clave de logística NO viaja al navegador');
@@ -106,12 +113,13 @@ try {
   };
   const creada = await api('POST', '/api/solicitudes', nueva);
   ok(creada.status === 201, 'se registra una solicitud');
-  ok(creada.datos.id === 'REQ-1387', `el correlativo sigue al histórico (${creada.datos.id})`);
+  ok(creada.datos.id === SIGUIENTE, `el correlativo sigue al histórico (${creada.datos.id})`);
   ok(creada.datos.estado === 'En espera' && creada.datos.fuente === 'app',
      'entra en espera y marcada como registrada en la app');
 
   const otra = await api('POST', '/api/solicitudes', nueva);
-  ok(otra.datos.id === 'REQ-1388', 'dos registros seguidos no repiten correlativo');
+  ok(otra.datos.id === 'REQ-' + String(SEMBRADOS + 2).padStart(3, '0'),
+     'dos registros seguidos no repiten correlativo');
 
   ok((await api('POST', '/api/solicitudes', { ...nueva, telefono: '12' })).status === 400,
      'el servidor valida el teléfono aunque la pantalla no lo haga');
@@ -233,6 +241,58 @@ try {
   ok(pb.datos.gastoActual > 0 && pb.datos.recomendado, 'con el gasto actual y un recomendado');
   ok(pb.datos.escenarios.every(e => e.costoPrimerAnio > 0),
      'y el costo del primer año según la fecha de ingreso');
+
+  // --------------------------------------------- exposición de data/
+  // La carpeta data/ tiene el padrón y el histórico junto a los supuestos del
+  // payback. Solo lo segundo puede salir del servidor.
+  console.log('\n-- qué se publica de data/ --');
+  const crudo = async ruta => {
+    const res = await fetch(BASE + ruta);
+    return { status: res.status, texto: await res.text() };
+  };
+  const padronWeb = await crudo('/data/padron.js');
+  ok(padronWeb.status === 404, 'el padrón no se sirve al navegador');
+  ok(!padronWeb.texto.includes('73012556'), 'y no se filtra ningún DNI en la respuesta');
+  ok((await crudo('/data/historico.js')).status === 404, 'el histórico tampoco');
+  ok((await crudo('/data/destinos.js')).status === 200, 'los destinos sí, que la pantalla los necesita');
+  ok((await crudo('/data/payback/parametros.js')).status === 200, 'y los supuestos del payback');
+  ok((await crudo('/backend/config.js')).status === 404, 'el código del servidor no se sirve');
+  ok((await crudo('/shared/documento.js')).status === 200,
+     'las reglas del documento viven en shared/, sin el padrón al lado');
+
+  // --------------------------------------------------- red y cabeceras
+  console.log('\n-- respuesta en red --');
+  const comprimida = await fetch(BASE + '/api/estado', { headers: { 'Accept-Encoding': 'gzip' } });
+  ok(comprimida.headers.get('content-encoding') === 'gzip', 'el estado viaja comprimido');
+  ok((comprimida.headers.get('vary') || '').includes('Accept-Encoding'),
+     'y avisa que la respuesta varía según la compresión');
+  const cab = await fetch(BASE + '/index.html');
+  ok(cab.headers.get('x-content-type-options') === 'nosniff', 'va la cabecera nosniff');
+  ok(cab.headers.get('x-frame-options') === 'DENY', 'y la que impide meterlo en un iframe');
+  ok((cab.headers.get('content-security-policy') || '').includes("default-src 'self'"),
+     'y una CSP que ata los recursos a este servidor');
+  ok(!cab.headers.get('x-powered-by'), 'no se anuncia el motor');
+
+  // --------------------------------------------------- freno de intentos
+  // La clave es una sola palabra: sin freno se prueba el diccionario entero.
+  console.log('\n-- freno de fuerza bruta --');
+  const { olvidarIntentos } = await import('../backend/middleware/limites.js');
+  // A esta altura la clave ya se cambió en la sección anterior.
+  const CLAVE_VIGENTE = 'claveNueva1';
+  olvidarIntentos();
+  let bloqueada = null;
+  for (let i = 0; i < 14 && bloqueada === null; i++) {
+    const r = await api('POST', '/api/auth/logistica', { clave: 'probando' + i });
+    if (r.status === 429) bloqueada = i;
+  }
+  ok(bloqueada !== null, `tras varios intentos fallidos responde 429 (al intento ${bloqueada})`);
+  ok(bloqueada === 10, 'y aguanta exactamente los 10 configurados antes de frenar');
+  const frenada = await api('POST', '/api/auth/logistica', { clave: CLAVE_VIGENTE });
+  ok(frenada.status === 429, 'mientras dura el freno ni la clave correcta pasa');
+  olvidarIntentos();
+  ok((await api('POST', '/api/auth/logistica', { clave: CLAVE_VIGENTE })).status === 200,
+     'pasado el castigo, la clave correcta vuelve a entrar');
+  olvidarIntentos();
 
   // ------------------------------------------------------------- errores
   console.log('\n-- errores --');

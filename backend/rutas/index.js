@@ -8,6 +8,7 @@ import * as autorizaciones from '../db/repos/autorizaciones.js';
 import * as adjuntos from '../db/repos/adjuntos.js';
 import * as ajustes from '../db/repos/ajustes.js';
 import { conSubida } from '../middleware/subida.js';
+import { limitarIntentos } from '../middleware/limites.js';
 import { CONFIG } from '../config.js';
 
 import { DESTINOS } from '#data/destinos.js';
@@ -37,7 +38,12 @@ api.get('/estado', (req, res) => {
   res.json({
     revision: ajustes.revision(),
     versionDatos: ajustes.leer('version_datos', ''),
-    personal: personal.listar(),
+    // Aquí va el CONTEO del padrón, no el padrón. Mandarlo entero ponía los
+    // 212 nombres con su DNI en la memoria de cualquier navegador que abriera
+    // la página, lo que dejaba sin efecto la decisión de no listarlo en
+    // pantalla: bastaba con abrir la consola. Las fichas se piden de a una
+    // por /api/personal?q= y por /api/auth/solicitante/:doc.
+    totalPersonal: personal.total(),
     solicitudes: solicitudes.listar(),
     autorizaciones: autorizaciones.listar(),
     adjuntos: adjuntos.listar(),
@@ -50,12 +56,18 @@ api.get('/revision', (req, res) => res.json({ revision: ajustes.revision() }));
 
 // -------------------------------------------------------------------- auth
 // La clave se compara en el servidor. Nunca se envía al navegador.
-api.post('/auth/logistica', (req, res) => {
+//
+// Las dos rutas de ingreso llevan freno por IP: son las únicas que responden
+// distinto según lo que se les mande, así que son las únicas que sirven para
+// probar a ciegas, sea una clave o un DNI tras otro.
+const frenoIngreso = limitarIntentos();
+
+api.post('/auth/logistica', frenoIngreso, (req, res) => {
   if (!ajustes.verificarClave(req.body?.clave)) throw error('Clave incorrecta.', 401);
   res.json({ ok: true });
 });
 
-api.get('/auth/solicitante/:doc', (req, res) => {
+api.get('/auth/solicitante/:doc', frenoIngreso, (req, res) => {
   const p = personal.porDocumento(req.params.doc);
   if (!p) throw error('El documento no figura en el padrón de personal.', 404);
   res.json(p);

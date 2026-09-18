@@ -1,5 +1,5 @@
 import { db, aCamel } from '../conexion.js';
-import { normalizarDoc, DOC_VALIDO } from '#data/padron.js';
+import { normalizarDoc, DOC_VALIDO } from '#shared/documento.js';
 import { tocar } from './ajustes.js';
 
 /**
