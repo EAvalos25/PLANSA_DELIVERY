@@ -4,6 +4,7 @@ import * as servicio from './servicio.js';
 import * as sesiones from './sesiones.js';
 import { requiereSesion, requiereRol } from './middleware.js';
 import { limitarIntentos } from '../middleware/limites.js';
+import { log } from '../seguridad/log.js';
 
 /**
  * Cuentas de logística: ingreso, cambio de clave propia y administración de
@@ -22,11 +23,12 @@ const frenoIngreso = limitarIntentos();
 
 // -------------------------------------------------------------------- auth
 usuarios.post('/auth/ingresar', frenoIngreso, (req, res) => {
-  res.json(servicio.ingresar(req.body?.usuario, req.body?.clave));
+  res.json(servicio.ingresar(req.body?.usuario, req.body?.clave, req));
 });
 
 usuarios.post('/auth/salir', requiereSesion, (req, res) => {
   sesiones.revocar(req.token);
+  log('logout', req);
   res.json({ ok: true });
 });
 
@@ -35,8 +37,10 @@ usuarios.get('/auth/yo', requiereSesion, (req, res) => {
 });
 
 usuarios.put('/auth/clave', requiereSesion, (req, res) => {
-  servicio.cambiarClavePropia(req.usuario, req.body?.actual, req.body?.nueva);
-  res.json({ ok: true });
+  // Cambiar la clave revoca todas las sesiones de la cuenta -incluida esta-,
+  // así que se devuelve un token nuevo para no dejar afuera a quien la pidió.
+  const token = servicio.cambiarClavePropia(req.usuario, req.body?.actual, req.body?.nueva, req);
+  res.json({ ok: true, token });
 });
 
 // ------------------------------------------------------- gestión de cuentas
@@ -50,14 +54,14 @@ usuarios.post('/usuarios', requiereSesion, requiereRol('admin'), (req, res) => {
     usuario: req.body?.usuario,
     rol: req.body?.rol,
     creadoPor: req.usuario.usuario
-  }));
+  }, req));
 });
 
 usuarios.post('/usuarios/:id/restablecer', requiereSesion, requiereRol('admin'), (req, res) => {
-  res.json(servicio.restablecerClave(Number(req.params.id)));
+  res.json(servicio.restablecerClave(Number(req.params.id), req));
 });
 
 usuarios.patch('/usuarios/:id', requiereSesion, requiereRol('admin'), (req, res) => {
   if (typeof req.body?.activo !== 'boolean') throw error('Falta indicar "activo" (true/false).', 400);
-  res.json(servicio.cambiarEstado(Number(req.params.id), req.body.activo, req.usuario));
+  res.json(servicio.cambiarEstado(Number(req.params.id), req.body.activo, req.usuario, req));
 });

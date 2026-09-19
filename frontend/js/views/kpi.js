@@ -50,7 +50,12 @@ function columnas(dias) {
 export function renderKpi() {
   const corte = new Date(); corte.setHours(0, 0, 0, 0); corte.setDate(corte.getDate() - (filtroKpi - 1));
   const todo = filtroKpi === 0;
-  const lista = DB.solicitudes.filter(s => todo || new Date(s.creado) >= corte);
+  const enRango = DB.solicitudes.filter(s => todo || new Date(s.creado) >= corte);
+  // Un servicio cancelado no se ejecutó: no debe inflar "viajes totales" ni
+  // el valorizado, ni aparecer entre los rankings. Se cuenta aparte, en su
+  // propia tarjeta, porque igual es información operativa útil.
+  const cancelados = enRango.filter(s => s.estado === 'Cancelado').length;
+  const lista = enRango.filter(s => s.estado !== 'Cancelado');
 
   $('fKpi').innerHTML = [[7, '7 días'], [30, '30 días'], [90, '90 días'], [0, 'Todo']]
     .map(([d, l]) => '<button class="fchip' + (filtroKpi === d ? ' on' : '') + '" onclick="setFiltroKpi(' + d + ')">' + l + '</button>').join('');
@@ -77,7 +82,8 @@ export function renderKpi() {
     { c: '', v: promDia.toFixed(1), k: 'Promedio de viajes al día', d: 'Sobre días con actividad' },
     { c: '', v: conCosto.length ? soles(costoTotal / conCosto.length) : 'N/D', k: 'Costo promedio por viaje', d: 'Solo servicios tarifados' },
     { c: 'info', v: enCurso.length, k: 'En curso', d: lista.filter(s => s.estado === 'En espera').length + ' en espera · ' + lista.filter(s => s.estado === 'En tránsito').length + ' en tránsito' },
-    { c: '', v: promAtencion != null ? promAtencion.toFixed(1) + ' h' : 'N/D', k: 'Atención de punta a punta', d: 'Del registro al cierre' }
+    { c: '', v: promAtencion != null ? promAtencion.toFixed(1) + ' h' : 'N/D', k: 'Atención de punta a punta', d: 'Del registro al cierre' },
+    { c: cancelados ? 'bad' : '', v: cancelados, k: 'Cancelados', d: 'No se ejecutaron; fuera del valorizado' }
   ].map(x => '<div class="kpi ' + x.c + '"><div class="v">' + x.v + '</div><div class="k">' + x.k + '</div><div class="d">' + x.d + '</div></div>').join('');
 
   // servicios por día: los últimos 21 días CON movimiento, no los 21 últimos

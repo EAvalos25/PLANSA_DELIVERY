@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import { CONFIG } from '../config.js';
+import { migrar } from './migrar.js';
 
 /**
  * Conexión a SQLite. Único punto del proyecto que abre la base.
@@ -33,6 +34,14 @@ export function abrir() {
 
   const esquema = fs.readFileSync(path.join(import.meta.dirname, 'esquema.sql'), 'utf8');
   bd.exec(esquema);
+
+  // esquema.sql es CREATE TABLE IF NOT EXISTS: le sirve a una base nueva, pero
+  // no le cambia nada a una que ya existía con una forma anterior. Eso lo hace
+  // migrar(), que recorre las migraciones pendientes contra `ajustes` (ver
+  // db/migrar.js). Import circular seguro: db() y migrar() son funciones
+  // declaradas (hoisted), no se llaman hasta aquí, mucho después de que ambos
+  // módulos ya terminaron de evaluarse.
+  migrar();
 
   return bd;
 }

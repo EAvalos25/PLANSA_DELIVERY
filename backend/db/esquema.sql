@@ -53,10 +53,20 @@ CREATE TABLE IF NOT EXISTS solicitudes (
   vehiculo        TEXT CHECK (vehiculo IS NULL OR vehiculo IN ('Motorizado', 'Carro')),
   costo           REAL CHECK (costo IS NULL OR costo >= 0),
 
-  estado          TEXT NOT NULL CHECK (estado IN ('En espera', 'En tránsito', 'Concluido')),
+  estado          TEXT NOT NULL CHECK (estado IN ('En espera', 'En tránsito', 'Concluido', 'Cancelado')),
   ts_espera       TEXT,
   ts_transito     TEXT,
   ts_concluido    TEXT,
+
+  -- Solo se llenan si `estado` es 'Cancelado'. `motivo_cancelacion` es de las
+  -- tres opciones fijas de la pantalla; `_detalle` es el texto libre que solo
+  -- pide "Otros". `cancelado_por` guarda quién fue: el usuario de logística
+  -- que lo hizo, o "Solicitante" si lo canceló el propio dueño del ticket.
+  motivo_cancelacion         TEXT NOT NULL DEFAULT ''
+                             CHECK (motivo_cancelacion IN ('', 'Usuario solicitó baja', 'No autorizado', 'Otros')),
+  motivo_cancelacion_detalle TEXT NOT NULL DEFAULT '',
+  cancelado_por              TEXT NOT NULL DEFAULT '',
+  ts_cancelado               TEXT,
 
   fuente          TEXT NOT NULL DEFAULT 'app' CHECK (fuente IN ('app', 'historico'))
 );
@@ -66,6 +76,23 @@ CREATE TABLE IF NOT EXISTS solicitudes (
 CREATE INDEX IF NOT EXISTS idx_solicitudes_estado ON solicitudes (estado);
 CREATE INDEX IF NOT EXISTS idx_solicitudes_fecha  ON solicitudes (fecha_prog);
 CREATE INDEX IF NOT EXISTS idx_solicitudes_dni    ON solicitudes (dni);
+
+-- ----------------------------------------------------------------- paradas
+-- Destinos adicionales de una solicitud con dos o más rutas en la misma
+-- programación. El primer destino sigue viviendo en `solicitudes.destino`
+-- -así no cambia nada de lo que ya lee el resto del sistema-; esta tabla solo
+-- guarda las paradas de MÁS, en el orden en que se visitan.
+CREATE TABLE IF NOT EXISTS paradas (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  ticket_id  TEXT NOT NULL,
+  orden      INTEGER NOT NULL,
+  destino    TEXT NOT NULL,
+  contacto   TEXT NOT NULL DEFAULT '',
+  telefono   TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY (ticket_id) REFERENCES solicitudes (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_paradas_ticket ON paradas (ticket_id);
 
 -- ---------------------------------------------------------- autorizaciones
 -- Pedidos de alta en el padrón de quien intentó entrar sin figurar en él.
@@ -118,6 +145,22 @@ CREATE TABLE IF NOT EXISTS adjuntos (
 );
 
 CREATE INDEX IF NOT EXISTS idx_adjuntos_ticket ON adjuntos (ticket_id);
+
+-- --------------------------------------------------------- eventos_seguridad
+-- Auditoría: ingresos, cambios de clave, altas/bajas de usuarios, acciones
+-- administrativas y accesos denegados. Nunca se guarda una clave ni un token
+-- acá -eso lo garantiza quien llama a `registrar()`, no esta tabla-.
+CREATE TABLE IF NOT EXISTS eventos_seguridad (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  cuando   TEXT NOT NULL DEFAULT (datetime('now')),
+  tipo     TEXT NOT NULL,
+  usuario  TEXT NOT NULL DEFAULT '',
+  ip       TEXT NOT NULL DEFAULT '',
+  detalle  TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS idx_eventos_seguridad_cuando ON eventos_seguridad (cuando);
+CREATE INDEX IF NOT EXISTS idx_eventos_seguridad_tipo ON eventos_seguridad (tipo);
 
 -- ------------------------------------------------------------------ ajustes
 -- Pares clave/valor para lo que no merece una tabla: la clave de logística, la

@@ -1,5 +1,6 @@
 import { db, aCamel, enTransaccion } from '../conexion.js';
 import { tocar } from './ajustes.js';
+import * as paradas from './paradas.js';
 
 /**
  * Solicitudes de servicio: el corazón de la aplicación.
@@ -19,11 +20,28 @@ const COLUMNAS = [
 ];
 
 export function listar() {
-  return db().prepare('SELECT * FROM solicitudes ORDER BY correlativo').all().map(aCamel);
+  const filas = db().prepare('SELECT * FROM solicitudes ORDER BY correlativo').all().map(aCamel);
+  const porTicket = paradas.todasAgrupadas();
+  return filas.map(s => ({ ...s, paradas: porTicket.get(s.id) || [] }));
 }
 
 export function porId(id) {
-  return aCamel(db().prepare('SELECT * FROM solicitudes WHERE id = ?').get(String(id)));
+  const fila = aCamel(db().prepare('SELECT * FROM solicitudes WHERE id = ?').get(String(id)));
+  if (!fila) return null;
+  fila.paradas = paradas.deTicket(fila.id);
+  return fila;
+}
+
+/**
+ * Los servicios de UN documento: es lo único que puede ver el solicitante,
+ * que nunca tuvo clave, solo su DNI. `GET /api/estado` y `GET /api/solicitudes`
+ * completos son cosa de logística (ver backend/rutas/index.js); esto es la
+ * única puerta pública a los datos de un servicio, y por eso queda acotada
+ * acá adentro, no confiando en que quien la llame filtre bien del otro lado.
+ */
+export function deDni(dni) {
+  const filas = db().prepare('SELECT * FROM solicitudes WHERE dni = ? ORDER BY correlativo').all(String(dni)).map(aCamel);
+  return filas.map(s => ({ ...s, paradas: paradas.deTicket(s.id) }));
 }
 
 export function total() {
@@ -73,9 +91,26 @@ export function crear(datos) {
       COLUMNAS.map(c => '@' + c).join(', ') + ')'
     ).run(fila);
 
+    // Paradas de más, cuando el servicio tiene dos o más rutas en la misma
+    // programación. El primer destino ya quedó en la fila de arriba.
+    paradas.guardar(fila.id, datos.paradas);
+
     tocar();
     return porId(fila.id);
   });
+}
+
+// Tope superior para los campos de texto libre. Nada del formulario necesita
+// más que esto; sin un tope, el único límite era el 1 MB del body completo,
+// que deja meter un solo campo gigantesco (y, si algún día un campo así se
+// vuelve a pintar sin `esc()` por descuido, cuanto más largo el texto, más
+// margen para un payload de XSS).
+const LARGO_MAX = { servicio: 200, motivo: 800, destino: 300, contacto: 150, origenDetalle: 300 };
+
+function tope(campo, valor) {
+  if (String(valor || '').length > LARGO_MAX[campo]) {
+    throw error('El campo "' + campo + '" no puede superar los ' + LARGO_MAX[campo] + ' caracteres.');
+  }
 }
 
 function validar(d) {
@@ -88,13 +123,22 @@ function validar(d) {
   const tel = String(d.telefono || '').replace(/\D/g, '');
   if (tel.length < 9 || tel.length > 11) throw error('Ingresa un teléfono válido de 9 dígitos.');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(d.fechaProg || ''))) throw error('Elige una fecha válida.');
+  // Nunca se validaba: cualquier texto quedaba en hora_prog y se pintaba tal
+  // cual en el modal de gestión. Vacío se admite (así llega el histórico, que
+  // no registraba hora), pero si viene algo, tiene que ser una hora de verdad.
+  if (d.horaProg && !/^([01]\d|2[0-3]):[0-5]\d$/.test(String(d.horaProg))) {
+    throw error('La hora debe tener el formato HH:MM.');
+  }
+  for (const campo of ['servicio', 'motivo', 'destino', 'contacto', 'origenDetalle']) tope(campo, d[campo]);
 }
 
-/** Cambia el transporte o la tarifa. Un ticket concluido ya no se toca. */
+/** Cambia el transporte o la tarifa. Un ticket concluido o cancelado ya no se toca. */
 export function actualizar(id, cambios) {
   const s = porId(id);
   if (!s) throw error('No existe el ticket ' + id + '.', 404);
-  if (s.estado === 'Concluido') throw error('El ticket ' + id + ' está concluido y ya no se modifica.', 409);
+  if (s.estado === 'Concluido' || s.estado === 'Cancelado') {
+    throw error('El ticket ' + id + ' está ' + s.estado.toLowerCase() + ' y ya no se modifica.', 409);
+  }
 
   const sets = [], valores = {};
   if ('vehiculo' in cambios) {
@@ -135,8 +179,33 @@ export function avanzar(id) {
     if (s.costo == null) throw error('Ingresa el costo de ' + id + ' para cerrarlo.', 409);
     db().prepare("UPDATE solicitudes SET estado = 'Concluido', ts_concluido = ? WHERE id = ?").run(ahora, id);
   } else {
-    throw error('El ticket ' + id + ' ya está concluido.', 409);
+    throw error('El ticket ' + id + ' ya está ' + s.estado.toLowerCase() + ' y no se puede avanzar.', 409);
   }
+  tocar();
+  return porId(id);
+}
+
+/**
+ * Cancela el ticket: no se elimina, queda como estado terminal con el motivo.
+ * `soloDesdeEspera` es el caso del propio solicitante cancelando lo suyo: solo
+ * antes de que salga un mensajero. Logística sí puede cancelar uno que ya está
+ * en tránsito (por ejemplo, si el motivo es que la persona no estaba
+ * autorizada y recién se descubre después de despachado).
+ */
+export function cancelar(id, { motivo, detalle, canceladoPor, soloDesdeEspera = false }) {
+  const s = porId(id);
+  if (!s) throw error('No existe el ticket ' + id + '.', 404);
+  if (s.estado === 'Concluido' || s.estado === 'Cancelado') {
+    throw error('El ticket ' + id + ' ya está ' + s.estado.toLowerCase() + ' y no se puede cancelar.', 409);
+  }
+  if (soloDesdeEspera && s.estado !== 'En espera') {
+    throw error('El servicio ya salió; pide a logística que lo cancele.', 409);
+  }
+
+  db().prepare(
+    "UPDATE solicitudes SET estado = 'Cancelado', motivo_cancelacion = ?, "
+    + 'motivo_cancelacion_detalle = ?, cancelado_por = ?, ts_cancelado = ? WHERE id = ?'
+  ).run(motivo, detalle || '', canceladoPor || '', new Date().toISOString(), id);
   tocar();
   return porId(id);
 }

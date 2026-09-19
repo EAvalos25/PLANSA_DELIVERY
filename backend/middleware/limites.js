@@ -1,4 +1,5 @@
 import { CONFIG } from '../config.js';
+import { registrar } from '../db/repos/eventosSeguridad.js';
 
 /**
  * Dos defensas mínimas para cuando la aplicación deja de estar sola en una PC
@@ -53,7 +54,16 @@ export function limitarIntentos({ maximo = CONFIG.limites.intentos, ventanaMs = 
       if (res.statusCode === 429) return;
       const previo = intentos.get(ip);
       const vigente = previo && previo.hasta > Date.now() ? previo : { n: 0, hasta: 0 };
-      intentos.set(ip, { n: vigente.n + 1, hasta: Date.now() + ventanaMs });
+      const nuevoTotal = vigente.n + 1;
+      intentos.set(ip, { n: nuevoTotal, hasta: Date.now() + ventanaMs });
+      // Se registra solo el momento en que se cruza el máximo, no cada 429
+      // mientras dura el freno: eso solo repetiría la misma fila sin agregar
+      // nada, mil veces si alguien insiste con el freno puesto.
+      if (nuevoTotal === maximo) {
+        registrar('actividad_sospechosa', {
+          ip, detalle: maximo + ' intentos fallidos seguidos en ' + req.method + ' ' + req.originalUrl
+        });
+      }
     });
 
     next();
@@ -62,6 +72,48 @@ export function limitarIntentos({ maximo = CONFIG.limites.intentos, ventanaMs = 
 
 /** Para las pruebas: deja el contador como recién arrancado. */
 export const olvidarIntentos = () => intentos.clear();
+
+// -------------------------------------------------------------- inundación
+/**
+ * Tope de peticiones por IP en una ventana, sin importar si salen bien o mal
+ * -a diferencia de `limitarIntentos`, que solo cuenta fallos-. Es para las
+ * rutas públicas que escriben (nadie necesita clave para pedir un servicio o
+ * un alta): sin este freno, un script podría registrar miles de solicitudes
+ * falsas o cancelar tickets probando id tras id, sin siquiera fallar nunca.
+ */
+const peticiones = new Map();          // clave -> { n, hasta }
+
+function purgarPeticiones(ahora) {
+  for (const [k, e] of peticiones) if (e.hasta <= ahora) peticiones.delete(k);
+}
+
+export function limitarPeticiones({ maximo, ventanaMs, mensaje, nombre = '' }) {
+  return function (req, res, next) {
+    const ahora = Date.now();
+    if (peticiones.size > 2000) purgarPeticiones(ahora);
+
+    const ip = req.ip || req.socket.remoteAddress || 'desconocida';
+    const clave = nombre + ':' + ip;
+    let e = peticiones.get(clave);
+    if (!e || e.hasta <= ahora) { e = { n: 0, hasta: ahora + ventanaMs }; peticiones.set(clave, e); }
+    e.n++;
+
+    if (e.n > maximo) {
+      const faltan = Math.ceil((e.hasta - ahora) / 1000);
+      res.setHeader('Retry-After', String(faltan));
+      if (e.n === maximo + 1) {
+        registrar('actividad_sospechosa', {
+          ip, detalle: 'más de ' + maximo + ' peticiones a ' + req.method + ' ' + req.originalUrl + ' en poco tiempo'
+        });
+      }
+      return res.status(429).json({ error: mensaje || 'Demasiadas solicitudes. Espera un momento y vuelve a intentar.' });
+    }
+    next();
+  };
+}
+
+/** Para las pruebas: deja el contador de inundación como recién arrancado. */
+export const olvidarPeticiones = () => peticiones.clear();
 
 // ------------------------------------------------------- cabeceras básicas
 /**
@@ -88,7 +140,10 @@ export function cabeceras(req, res, next) {
     "connect-src 'self'",
     "frame-ancestors 'none'",
     "base-uri 'self'",
-    "form-action 'self'"
+    "form-action 'self'",
+    // Nada de plugins (Flash y similares): esta app no usa ninguno, y es la
+    // única línea de la CSP que no tiene costo -no rompe nada- cerrarla del todo.
+    "object-src 'none'"
   ].join('; '));
   next();
 }

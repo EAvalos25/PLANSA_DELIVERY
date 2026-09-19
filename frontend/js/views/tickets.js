@@ -1,7 +1,8 @@
 import { $, esc } from '../utils/dom.js';
 import { pad, numeroTicket } from '../utils/format.js';
-import { DB } from '../api/estado.js';
+import { DB, cancelarSolicitud } from '../api/estado.js';
 import { sesion } from '../state/sessionState.js';
+import { toast } from '../utils/toast.js';
 import { ticketHTML } from './presenters.js';
 
 /**
@@ -40,4 +41,22 @@ export function renderMis() {
     cont.innerHTML = mias.map(ticketHTML).join('');
   }
   if ($('uSeguimiento').classList.contains('on') && $('qTicket').value) consultarTicket();
+}
+
+/**
+ * El propio solicitante cancela lo suyo, sin elegir motivo: el servidor lo
+ * pone solo ("Usuario solicitó baja") y solo lo deja mientras el ticket sigue
+ * "En espera" -una vez que salió un mensajero, ya no es autoservicio-.
+ */
+export async function cancelarMiSolicitud(id) {
+  if (!confirm('¿Cancelar el servicio ' + id + '? No se puede deshacer.')) return;
+  try {
+    await cancelarSolicitud(id);
+  } catch (e) {
+    toast('No se pudo cancelar', e.message, 'bad');
+    return;
+  }
+  renderMis();
+  if ($('qTicket').value) consultarTicket();
+  toast('Servicio cancelado', id + ' ya no se va a ejecutar.', 'warn');
 }

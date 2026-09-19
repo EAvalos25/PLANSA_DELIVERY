@@ -102,6 +102,44 @@
   --overlay-bg:rgba(6,10,14,.72);
 }
 
+/* Negro puro (#000), tipo MacBook: mismos acentos que el oscuro, pero con la
+   superficie y las tarjetas en negro real en vez de gris azulado, separadas
+   solo por el borde. Pensado para pantallas OLED y ambientes muy oscuros. */
+:root[data-theme="black"]{
+  color-scheme: dark;
+
+  --ink:#000000;
+  --surface:#000000;
+  --surface2:#0D0D0D;
+  --surface3:#1A1A1A;
+  --line:#2A2A2A;
+  --line-soft:#1D1D1D;
+  --text:#F5F5F5;
+  --muted:#A0A0A0;
+  --muted2:#727272;
+
+  --primary:#5AA9E6;
+  --primary-strong:#7CBEF0;
+  --primary-soft:#101E2B;
+  --primary-line:#25445E;
+  --on-primary:#07182A;
+
+  --accent:#4CC38A;
+  --accent-strong:#6BD3A2;
+  --accent-soft:#0D231C;
+  --on-accent:#052419;
+
+  --warn:#F2A93B;   --warn-soft:#2A200E;   --warn-line:#5A4419;
+  --info:#35B6E8;   --info-soft:#0D2830;   --info-line:#184355;
+  --ok:#4CC38A;     --ok-soft:#0D231C;     --ok-line:#1C4432;
+  --danger:#E5645F; --danger-soft:#2A1413; --danger-line:#582826;
+  --violet:#9B8CF0;
+
+  --shadow-sm:0 1px 2px rgba(0,0,0,.6);
+  --shadow-md:0 10px 28px rgba(0,0,0,.7);
+  --overlay-bg:rgba(0,0,0,.85);
+}
+
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{
@@ -128,12 +166,14 @@ a{color:var(--primary)}
 }
 .brand{display:flex;align-items:center;min-width:0}
 .brand-name{font-weight:700;letter-spacing:-.3px;line-height:1.12;white-space:nowrap;color:var(--brand-blue);font-size:16px}
-:root[data-theme="dark"] .brand-name{color:var(--text)}
+:root[data-theme="dark"] .brand-name,:root[data-theme="black"] .brand-name{color:var(--text)}
 .brand-name em{font-style:normal;color:var(--brand-green)}
 .brand-sub{font-size:11.5px;color:var(--muted2);line-height:1.2}
 .topbar-spacer{flex:1}
 .topbar-actions{display:flex;align-items:center;gap:10px}
 
+/* Botón redondo genérico: lo reutilizan cada icono del selector de tema y el
+   icono de "Acceso de logística" del topbar. */
 .theme-toggle{
   width:36px;height:36px;flex:none;
   display:grid;place-items:center;
@@ -142,9 +182,15 @@ a{color:var(--primary)}
 }
 .theme-toggle:hover{color:var(--primary);border-color:var(--primary-line)}
 .theme-toggle svg{width:18px;height:18px}
-.theme-toggle .i-moon{display:none}
-:root[data-theme="dark"] .theme-toggle .i-moon{display:block}
-:root[data-theme="dark"] .theme-toggle .i-sun{display:none}
+.theme-toggle.on{background:var(--primary-soft);border-color:var(--primary-line);color:var(--primary)}
+
+/* Selector de tema: tres botones fijos (claro / oscuro / negro), no un único
+   botón que alterna, para que se elija el modo directo en vez de ciclarlo.
+   Más chicos y separados del icono de logística: son un ajuste secundario,
+   no deben competir con lo que sí importa acá. */
+.theme-switch{display:flex;gap:4px;margin-right:14px}
+.theme-switch .theme-toggle{width:28px;height:28px}
+.theme-switch .theme-toggle svg{width:14px;height:14px}
 
 .session{
   display:flex;align-items:center;gap:10px;
@@ -217,7 +263,7 @@ a{color:var(--primary)}
 .field{margin-bottom:15px}
 .field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:6px;font-weight:500}
 .req{color:var(--accent-strong)}
-:root[data-theme="dark"] .req{color:var(--accent)}
+:root[data-theme="dark"] .req,:root[data-theme="black"] .req{color:var(--accent)}
 .input,.select,.textarea{
   width:100%;background:var(--surface);border:1px solid var(--line);
   border-radius:8px;padding:10px 12px;color:var(--text);
@@ -280,6 +326,8 @@ a{color:var(--primary)}
 .btn-info:hover{filter:brightness(1.08)}
 .btn-ok{background:var(--accent);color:var(--on-accent)}
 .btn-ok:hover{background:var(--accent-strong)}
+.btn-danger{background:var(--danger);color:#fff}
+.btn-danger:hover{filter:brightness(1.08)}
 .link-btn{
   background:none;border:none;padding:0;color:var(--primary);
   font-size:12.5px;text-decoration:underline;text-underline-offset:2px;
@@ -338,7 +386,15 @@ a{color:var(--primary)}
 .st-transito .dot{background:var(--info);animation:pulse 1.8s ease-in-out infinite}
 .st-concluido{color:var(--ok);border-color:var(--ok-line);background:var(--ok-soft)}
 .st-concluido .dot{background:var(--ok)}
+.st-cancelado{color:var(--danger);border-color:var(--danger-line);background:var(--danger-soft)}
+.st-cancelado .dot{background:var(--danger)}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+
+.hist-paginacion{
+  display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;
+  padding:12px 14px;border-top:1px solid var(--line-soft);
+}
+.hist-paginacion .tools{align-items:center}
 
 /* ---------- Tablas ---------- */
 .table-wrap{border:1px solid var(--line);border-radius:var(--r);overflow:auto;background:var(--surface);box-shadow:var(--shadow-sm)}
@@ -365,7 +421,7 @@ tbody tr:hover{background:var(--surface2)}
   background:var(--accent-soft);color:var(--accent-strong);
   font-size:11px;font-weight:600;font-family:var(--sans);vertical-align:middle;
 }
-:root[data-theme="dark"] .clip{color:var(--accent)}
+:root[data-theme="dark"] .clip,:root[data-theme="black"] .clip{color:var(--accent)}
 
 .mini-input{
   width:84px;background:var(--surface);border:1px solid var(--line);border-radius:6px;
@@ -375,6 +431,12 @@ tbody tr:hover{background:var(--surface2)}
   background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:5px 8px;font-size:13px;color:var(--text);
 }
 .mini-input:focus,.mini-select:focus{border-color:var(--primary);outline:none}
+
+/* Icono de moto/carro junto al nombre del transporte, en texto o junto al select */
+.icon-veh{display:inline-flex;flex:none;color:var(--muted)}
+.icon-veh svg{width:16px;height:16px}
+.veh-tag{display:inline-flex;align-items:center;gap:6px}
+.veh-pick{display:inline-flex;align-items:center;gap:6px}
 
 /* ---------- Tarjetas de ticket (móvil + usuario) ---------- */
 .tickets{display:grid;gap:12px}
@@ -395,6 +457,11 @@ tbody tr:hover{background:var(--surface2)}
 .route-body div:last-child{margin-bottom:0}
 .route-body b{display:block;font-weight:550;font-size:14px;word-break:break-word}
 .route-body span{font-size:11.5px;color:var(--muted2)}
+.paradas-extra{margin-bottom:14px;padding:10px 12px;background:var(--surface2);border-radius:8px}
+.paradas-extra ol{margin:6px 0 0;padding-left:18px}
+.paradas-extra li{font-size:13px;margin-bottom:3px}
+.paradas-extra li:last-child{margin-bottom:0}
+
 .ticket-facts{display:flex;flex-wrap:wrap;gap:6px 22px;padding-top:13px;border-top:1px solid var(--line-soft)}
 .fact{font-size:12.5px;color:var(--muted)}
 .fact b{color:var(--text);font-weight:600}
@@ -436,7 +503,8 @@ tbody tr:hover{background:var(--surface2)}
 .kpi.primary .v{color:var(--primary)}
 .kpi.info .v{color:var(--info)}
 .kpi.ok .v{color:var(--accent-strong)}
-:root[data-theme="dark"] .kpi.ok .v{color:var(--accent)}
+:root[data-theme="dark"] .kpi.ok .v,:root[data-theme="black"] .kpi.ok .v{color:var(--accent)}
+.kpi.bad .v{color:var(--danger)}
 
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
 @media(max-width:900px){.grid2{grid-template-columns:1fr}}
@@ -465,7 +533,7 @@ svg{display:block;max-width:100%}
   background:var(--accent-soft);color:var(--accent-strong);
   border-radius:999px;padding:1px 8px;font-size:11.5px;font-weight:600;
 }
-:root[data-theme="dark"] .attach-count{color:var(--accent)}
+:root[data-theme="dark"] .attach-count,:root[data-theme="black"] .attach-count{color:var(--accent)}
 .attach-empty{margin:0 0 12px;font-size:13px;color:var(--muted)}
 .attach-warn{
   margin:0 0 12px;padding:9px 12px;border-radius:8px;font-size:12.5px;

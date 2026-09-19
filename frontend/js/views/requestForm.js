@@ -1,4 +1,4 @@
-import { $, marcar } from '../utils/dom.js';
+import { $, esc, marcar } from '../utils/dom.js';
 import { pad, hoyISO, isoDia, numeroTicket } from '../utils/format.js';
 import { toast } from '../utils/toast.js';
 import { MARGEN_HORAS, SLOT_INI, SLOT_FIN } from '../config.js';
@@ -8,9 +8,52 @@ import { renderMis } from './tickets.js';
 
 /**
  * Formulario de nueva solicitud del solicitante: acción, origen, programación
- * horaria y validación/registro del ticket.
+ * horaria, paradas adicionales y validación/registro del ticket.
  */
 let accionSel = '';
+
+// --------------------------------------------------------- paradas extra
+// Un servicio con dos o más rutas en la misma programación: el primer
+// destino sigue siendo el campo de siempre (fDestino); esto es solo lo que se
+// agrega de más. Un array simple en memoria alcanza: se arma de nuevo cada
+// vez que se pinta, y se vacía al enviar o al abrir la vista.
+let paradasExtra = [];
+
+function renderParadas() {
+  $('listaParadas').innerHTML = paradasExtra.map((p, i) => (
+    '<div class="row" style="align-items:flex-end;margin-bottom:10px">'
+    + '<div class="field" style="margin:0"><label>Destino ' + (i + 2) + '</label>'
+    + '<input class="input" list="dlDestinos" autocomplete="off" placeholder="Dirección de la parada"'
+    + ' value="' + esc(p.destino) + '" oninput="editarParada(' + i + ',\'destino\',this.value)"></div>'
+    + '<div class="field" style="margin:0"><label>Contacto</label>'
+    + '<input class="input" placeholder="Quién recibe (opcional)"'
+    + ' value="' + esc(p.contacto) + '" oninput="editarParada(' + i + ',\'contacto\',this.value)"></div>'
+    + '<div class="field" style="margin:0;max-width:140px"><label>Teléfono</label>'
+    + '<input class="input" inputmode="numeric" maxlength="12" placeholder="Opcional"'
+    + ' value="' + esc(p.telefono) + '" oninput="editarParada(' + i + ',\'telefono\',this.value.replace(/\\D/g,\'\'))"></div>'
+    + '<button type="button" class="btn btn-sm btn-ghost" onclick="quitarParada(' + i + ')" title="Quitar esta parada">✕</button>'
+    + '</div>'
+  )).join('');
+}
+
+export function agregarParada() {
+  paradasExtra.push({ destino: '', contacto: '', telefono: '' });
+  renderParadas();
+}
+
+export function editarParada(i, campo, valor) {
+  if (paradasExtra[i]) paradasExtra[i][campo] = valor;
+}
+
+export function quitarParada(i) {
+  paradasExtra.splice(i, 1);
+  renderParadas();
+}
+
+export function limpiarParadas() {
+  paradasExtra = [];
+  renderParadas();
+}
 
 export function setAccion(v) {
   accionSel = v;
@@ -112,9 +155,19 @@ export async function enviarSolicitud() {
   const msgHora = errorHora(fecha, hora);
   ok = marcar('fHora', 'eHora', !!msgHora, msgHora || undefined) && ok;
 
-  if (!ok) {
+  // Las paradas vacías (se le dio a "+ Agregar" y no se llenó) se descartan
+  // solas; las que sí tienen algo escrito deben cumplir la misma regla que el
+  // destino principal.
+  const paradas = paradasExtra
+    .filter(p => p.destino.trim())
+    .map(p => ({ destino: p.destino.trim(), contacto: p.contacto.trim(), telefono: p.telefono.replace(/\D/g, '') }));
+  const paradaCorta = paradas.find(p => p.destino.length < 6);
+
+  if (!ok || paradaCorta) {
     refrescarHoras();
-    toast('Revisa el formulario', 'Hay campos pendientes o fuera de rango.', 'bad');
+    toast('Revisa el formulario', paradaCorta
+      ? 'Cada parada adicional necesita una dirección de al menos 6 caracteres.'
+      : 'Hay campos pendientes o fuera de rango.', 'bad');
     return;
   }
 
@@ -127,7 +180,7 @@ export async function enviarSolicitud() {
       dni: sesion.dni, nombre: sesion.nombre, cargo: sesion.cargo, area: sesion.area,
       tipo: accionSel, servicio, motivo, origen, origenDetalle: origen === 'Otros' ? otro : '',
       destino: dest, contacto: cont, telefono: tel,
-      fechaProg: fecha, horaProg: hora
+      fechaProg: fecha, horaProg: hora, paradas
     });
   } catch (e) {
     toast('No se pudo registrar', e.message, 'bad');
@@ -140,6 +193,7 @@ export async function enviarSolicitud() {
   toast('Solicitud registrada', s.id + ' quedó en espera de asignación.');
 
   ['fServicio', 'fMotivo', 'fDestino', 'fContacto', 'fTel', 'fOrigenOtro', 'fHora'].forEach(id => { $(id).value = ''; $(id).classList.remove('bad'); });
+  limpiarParadas();
   resetAccion();
   $('fAccion').classList.remove('bad');
   document.querySelectorAll('.err').forEach(e => e.classList.remove('on'));

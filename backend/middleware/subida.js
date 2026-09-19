@@ -101,6 +101,41 @@ function filtro(req, archivo, cb) {
   cb(Object.assign(new Error('Solo se admiten imágenes o archivos PDF.'), { status: 415 }));
 }
 
+/**
+ * El `Content-Type` de una parte multipart lo declara quien sube el archivo:
+ * nada impide mandar contenido HTML o JavaScript diciendo "esto es una
+ * imagen". `filtro()` solo mira esa declaración; esto mira los primeros
+ * bytes de verdad y rechaza si no son los que ese tipo debería tener.
+ *
+ * No es la única defensa -`nosniff` y la extensión fija (ver `extension()`)
+ * ya impiden que el navegador lo ejecute igual-, pero cierra el hueco desde
+ * el origen: un archivo que miente sobre su tipo ni siquiera queda guardado.
+ */
+const FIRMAS = {
+  'image/jpeg': buf => buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF,
+  'image/png': buf => buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])),
+  'image/gif': buf => buf.subarray(0, 6).toString('ascii') === 'GIF87a' || buf.subarray(0, 6).toString('ascii') === 'GIF89a',
+  'image/webp': buf => buf.subarray(0, 4).toString('ascii') === 'RIFF' && buf.subarray(8, 12).toString('ascii') === 'WEBP',
+  'application/pdf': buf => buf.subarray(0, 4).toString('ascii') === '%PDF',
+  // El contenedor de HEIC (ISO BMFF) es más variado: alcanza con confirmar la
+  // caja "ftyp" que todo archivo de este formato tiene, sin exigir una marca
+  // de compatibilidad puntual que cambia según el celular que lo generó.
+  'image/heic': buf => buf.subarray(4, 8).toString('ascii') === 'ftyp'
+};
+
+export function coincideConFirma(archivo) {
+  const verifica = FIRMAS[archivo.mimetype];
+  if (!verifica) return true; // sin firma conocida para el tipo, no se bloquea de más
+  const fd = fs.openSync(archivo.path, 'r');
+  try {
+    const buf = Buffer.alloc(16);
+    fs.readSync(fd, buf, 0, 16, 0);
+    return verifica(buf);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
 export const subirGuia = multer({
   storage: almacen,
   fileFilter: filtro,
@@ -117,16 +152,27 @@ export const subirGuia = multer({
  */
 export function conSubida(req, res, next) {
   subirGuia(req, res, err => {
-    if (!err) return next();
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      err.status = 413;
-      err.message = 'El archivo supera el máximo de '
-        + (CONFIG.archivos.tamanoMaximo / (1024 * 1024)).toFixed(0) + ' MB.';
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        err.status = 413;
+        err.message = 'El archivo supera el máximo de '
+          + (CONFIG.archivos.tamanoMaximo / (1024 * 1024)).toFixed(0) + ' MB.';
+      }
+      if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+        err.status = 400;
+        err.message = 'Envía un solo archivo, en el campo "archivo".';
+      }
+      return next(err);
     }
-    if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
-      err.status = 400;
-      err.message = 'Envía un solo archivo, en el campo "archivo".';
+
+    if (req.file && !coincideConFirma(req.file)) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { /* ya no estaba */ }
+      return next(Object.assign(
+        new Error('El archivo no coincide con el tipo que declara. Sube el archivo original, no uno renombrado.'),
+        { status: 415 }
+      ));
     }
-    next(err);
+
+    next();
   });
 }

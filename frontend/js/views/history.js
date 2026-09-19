@@ -2,12 +2,12 @@ import { $, esc } from '../utils/dom.js';
 import { fechaCorta, horasEntre, corta, hoyISO } from '../utils/format.js';
 import { toast } from '../utils/toast.js';
 import { DB, exportarExcel } from '../api/estado.js';
-import { chipEstado, origenCorto } from './presenters.js';
+import { chipEstado, origenCorto, vehiculoHTML } from './presenters.js';
 import { abrirModal, cerrarModal } from './dispatch.js';
 
 /**
- * Histórico de servicios: tabla filtrable de una fila por servicio y
- * exportación a CSV (24 columnas planas, listo para Power BI / Looker Studio).
+ * Histórico de servicios: tabla filtrable y paginada, más exportación a CSV
+ * (29 columnas planas, listo para Power BI / Looker Studio) y a Excel.
  */
 const COLUMNAS = [
   ['ticket', s => s.id],
@@ -33,50 +33,82 @@ const COLUMNAS = [
   ['fecha_transito', s => s.tsTransito ? s.tsTransito.slice(0, 16).replace('T', ' ') : ''],
   ['fecha_conclusion', s => s.tsConcluido ? s.tsConcluido.slice(0, 16).replace('T', ' ') : ''],
   ['horas_espera', s => { const h = horasEntre(s.tsEspera, s.tsTransito); return h != null ? h.toFixed(2) : ''; }],
-  ['horas_transito', s => { const h = horasEntre(s.tsTransito, s.tsConcluido); return h != null ? h.toFixed(2) : ''; }]
+  ['horas_transito', s => { const h = horasEntre(s.tsTransito, s.tsConcluido); return h != null ? h.toFixed(2) : ''; }],
+  ['motivo_cancelacion', s => s.motivoCancelacion || ''],
+  ['detalle_cancelacion', s => s.motivoCancelacionDetalle || ''],
+  ['cancelado_por', s => s.canceladoPor || ''],
+  ['paradas_adicionales', s => (s.paradas || [])
+    .map(p => p.destino + (p.contacto || p.telefono ? ' (' + [p.contacto, p.telefono].filter(Boolean).join(', ') + ')' : ''))
+    .join(' | ')]
 ];
 
 /**
- * Cuántas filas se pintan como máximo.
- *
- * El histórico pasa de mil quinientos servicios y crece cada día. Volcarlos
- * todos son ~20 000 celdas en el DOM, y la tabla se repinta cada vez que
- * alguien cambia algo desde otra PC: el navegador se traba unos segundos para
- * mostrar filas que nadie va a leer. Se pintan las más recientes y el resto se
- * alcanza filtrando, que es como se usa de verdad. El CSV sí exporta todo.
+ * Filas por página. El histórico pasa de mil seiscientos servicios y crece
+ * cada día: pintarlo entero en el DOM son ~30 000 celdas, y la tabla se
+ * repinta cada vez que alguien cambia algo desde otra PC. Se pagina de a 20 en
+ * vez de recortar a un tope fijo, para poder llegar a cualquier fila sin más
+ * que ir pasando página. El CSV y el Excel sí exportan todo, sin paginar.
  */
-const MAX_FILAS = 300;
+const FILAS_POR_PAGINA = 20;
+let paginaActual = 1;
 
 /** Repinta solo si la pestaña está a la vista, como hace el panel de indicadores. */
 export function renderHistoricoSiVisible() {
   if ($('aHistorico').classList.contains('on')) renderHistorico();
 }
 
+function listaFiltrada() {
+  const q = ($('qHist').value || '').toLowerCase().trim();
+  const ticket = ($('histTicket').value || '').toLowerCase().trim();
+  const destino = ($('histDestino').value || '').toLowerCase().trim();
+  const desde = $('histDesde').value || '';
+  const hasta = $('histHasta').value || '';
+
+  let lista = DB.solicitudes.slice().sort((a, b) => b.creado.localeCompare(a.creado));
+  if (q) lista = lista.filter(s => (s.nombre + ' ' + s.dni).toLowerCase().includes(q));
+  if (ticket) lista = lista.filter(s => s.id.toLowerCase().includes(ticket));
+  if (destino) lista = lista.filter(s => (s.destino || '').toLowerCase().includes(destino));
+  if (desde) lista = lista.filter(s => s.fechaProg >= desde);
+  if (hasta) lista = lista.filter(s => s.fechaProg <= hasta);
+  return lista;
+}
+
+/** Se llama desde los filtros: un filtro nuevo siempre vuelve a la página 1. */
+export function filtrarHistorico() { paginaActual = 1; renderHistorico(); }
+
+export function irPaginaHistorico(n) { paginaActual = n; renderHistorico(); }
+
+export function limpiarFiltrosHistorico() {
+  $('qHist').value = ''; $('histTicket').value = ''; $('histDestino').value = '';
+  $('histDesde').value = ''; $('histHasta').value = '';
+  filtrarHistorico();
+}
+
 export function renderHistorico() {
   $('cntHist').textContent = DB.solicitudes.length;
-  const q = ($('qHist').value || '').toLowerCase().trim();
-  let lista = DB.solicitudes.slice().sort((a, b) => b.creado.localeCompare(a.creado));
-  if (q) lista = lista.filter(s => (s.id + ' ' + s.nombre + ' ' + s.dni + ' ' + s.destino + ' ' + s.motivo + ' ' + s.area + ' ' + (s.servicio || '')).toLowerCase().includes(q));
+  const lista = listaFiltrada();
 
   if (!lista.length) {
-    $('tHist').innerHTML = '<div class="empty"><strong>Sin coincidencias</strong>Prueba con otro ticket, solicitante o destino.</div>';
+    $('tHist').innerHTML = '<div class="empty"><strong>Sin coincidencias</strong>Prueba con otro filtro.</div>';
     return;
   }
-  const coincidencias = lista.length;
-  const recortada = coincidencias > MAX_FILAS;
-  if (recortada) lista = lista.slice(0, MAX_FILAS);
 
-  const filas = lista.map(s => {
+  const totalPaginas = Math.max(1, Math.ceil(lista.length / FILAS_POR_PAGINA));
+  if (paginaActual > totalPaginas) paginaActual = totalPaginas;
+  const inicio = (paginaActual - 1) * FILAS_POR_PAGINA;
+  const pagina = lista.slice(inicio, inicio + FILAS_POR_PAGINA);
+
+  const filas = pagina.map(s => {
     const he = horasEntre(s.tsEspera, s.tsTransito);
     const ht = horasEntre(s.tsTransito, s.tsConcluido);
     return '<tr>'
       + '<td><span class="tk">' + s.id + '</span></td>'
       + '<td class="nowrap">' + fechaCorta(s.creado) + '</td>'
-      + '<td class="cell-2">' + esc(corta(s.nombre, 20)) + '<span>' + esc(s.area) + '</span></td>'
+      + '<td class="cell-2">' + esc(corta(s.nombre, 20)) + '<span>' + esc(s.cargo || s.area) + '</span></td>'
       + '<td class="cell-2">' + s.tipo + '<span>' + esc(corta(s.servicio || '—', 18)) + '</span></td>'
       + '<td>' + esc(origenCorto(s)) + '</td>'
-      + '<td>' + esc(corta(s.destino, 34)) + '</td>'
-      + '<td>' + (s.vehiculo || '<span class="muted">N/D</span>') + '</td>'
+      + '<td>' + esc(corta(s.destino, 34)) + (s.paradas && s.paradas.length ? ' <span class="clip">+' + s.paradas.length + '</span>' : '') + '</td>'
+      + '<td>' + vehiculoHTML(s.vehiculo, '<span class="muted">N/D</span>') + '</td>'
       + '<td class="num">' + (s.costo != null ? s.costo.toFixed(2) : '<span class="muted">N/D</span>') + '</td>'
       + '<td class="num">' + (he != null ? he.toFixed(1) : '<span class="muted">N/D</span>') + '</td>'
       + '<td class="num">' + (ht != null ? ht.toFixed(1) : '<span class="muted">N/D</span>') + '</td>'
@@ -84,17 +116,25 @@ export function renderHistorico() {
       + '<td><button class="btn btn-sm btn-ghost" onclick="verDetalle(\'' + s.id + '\')">Ver</button></td>'
       + '</tr>';
   }).join('');
-  const aviso = recortada
-    ? '<div class="hint" style="padding:10px 12px">Se muestran los ' + MAX_FILAS
-      + ' servicios más recientes de ' + coincidencias
-      + ' que coinciden. Filtra por ticket, solicitante o destino para llegar al resto; '
-      + 'el CSV los exporta todos.</div>'
-    : '';
 
   $('tHist').innerHTML = '<table><thead><tr>'
     + '<th>Ticket</th><th>Registro</th><th>Solicitante</th><th>Servicio</th><th>Origen</th><th>Destino</th>'
     + '<th>Transporte</th><th class="num">Costo S/</th><th class="num">Espera h</th><th class="num">Tránsito h</th><th>Estado</th><th></th>'
-    + '</tr></thead><tbody>' + filas + '</tbody></table>' + aviso;
+    + '</tr></thead><tbody>' + filas + '</tbody></table>' + paginacionHTML(paginaActual, totalPaginas, lista.length, inicio);
+}
+
+function paginacionHTML(actual, total, totalFilas, inicio) {
+  const hasta = Math.min(inicio + FILAS_POR_PAGINA, totalFilas);
+  return '<div class="hist-paginacion">'
+    + '<span class="muted small">Mostrando ' + (inicio + 1) + '–' + hasta + ' de ' + totalFilas + '</span>'
+    + (total > 1
+      ? '<div class="tools">'
+        + '<button class="btn btn-sm btn-ghost"' + (actual <= 1 ? ' disabled' : '') + ' onclick="irPaginaHistorico(' + (actual - 1) + ')">‹ Anterior</button>'
+        + '<span class="small">Página ' + actual + ' de ' + total + '</span>'
+        + '<button class="btn btn-sm btn-ghost"' + (actual >= total ? ' disabled' : '') + ' onclick="irPaginaHistorico(' + (actual + 1) + ')">Siguiente ›</button>'
+        + '</div>'
+      : '')
+    + '</div>';
 }
 
 export function exportarCSV() {
@@ -120,10 +160,14 @@ export function exportarCSV() {
  * descargar: por eso va en un modal y no es un botón directo como el CSV.
  */
 export function abrirExportarExcel() {
+  // Si ya hay un rango puesto en los filtros de la tabla, se ofrece igual acá:
+  // lo más común es filtrar para MIRAR un rango y de una vez exportar ese mismo.
+  const desde = $('histDesde').value || '';
+  const hasta = $('histHasta').value || '';
   const html = '<p class="sub">Filtra por la fecha programada del viaje. Deja los campos vacíos para exportar todo el histórico.</p>'
     + '<div class="row">'
-    + '<div class="field" style="margin:0"><label for="expDesde">Desde</label><input class="input" id="expDesde" type="date"></div>'
-    + '<div class="field" style="margin:0"><label for="expHasta">Hasta</label><input class="input" id="expHasta" type="date"></div>'
+    + '<div class="field" style="margin:0"><label for="expDesde">Desde</label><input class="input" id="expDesde" type="date" value="' + desde + '"></div>'
+    + '<div class="field" style="margin:0"><label for="expHasta">Hasta</label><input class="input" id="expHasta" type="date" value="' + hasta + '"></div>'
     + '</div>'
     + '<div class="err" id="eExportar"></div>'
     + '<button class="btn btn-sm" style="margin-top:14px" onclick="confirmarExportarExcel()">Descargar Excel</button>';

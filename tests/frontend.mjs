@@ -106,7 +106,8 @@ try {
   const bd = await mod('frontend/js/api/estado.js');
   ok(bd.DB.totalPersonal === 212, `del padrón llega el conteo, no las fichas (${bd.DB.totalPersonal})`);
   ok(!('personal' in bd.DB), 'el padrón completo no viaja al navegador');
-  ok(bd.DB.solicitudes.length === RESUMEN.servicios, `y el histórico 2026 (${bd.DB.solicitudes.length})`);
+  ok(Array.isArray(bd.DB.solicitudes) && bd.DB.solicitudes.length === 0,
+     'sin sesión de logística, el historial NO viaja: llega vacío hasta que alguien se identifique');
   ok(!('usuarios' in bd.DB), 'las cuentas de logística no están en la copia del navegador');
 
   // ------------------------------------------------------- ingreso y flujo
@@ -124,12 +125,27 @@ try {
   $('fFecha').value = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
   $('fHora').value = '10:00';
   globalThis.setAccion('Entregar');
+
+  // Una ruta más en la misma programación: se agrega antes de enviar, junto
+  // al resto del formulario, así el ticket que ya esperan las pruebas de más
+  // abajo (TICKET) queda con ella, sin registrar uno aparte.
+  globalThis.agregarParada();
+  ok($('listaParadas').innerHTML.includes('Destino 2'), 'agregar una parada la pinta en el formulario');
+  globalThis.editarParada(0, 'destino', 'CLIENTE DOS, AV. JAVIER PRADO 1200, SAN ISIDRO');
+  globalThis.editarParada(0, 'contacto', 'Recepción');
+
   await globalThis.enviarSolicitud();
   ok($('okTitle').textContent === 'Ticket ' + TICKET + ' registrado',
      'la solicitud se guarda en SQLite y vuelve con su correlativo: ' + $('okTitle').textContent);
+  ok($('listaParadas').innerHTML === '', 'y el formulario de paradas queda limpio para la próxima');
 
-  const guardada = await (await fetch('/api/solicitudes/' + TICKET)).json();
-  ok(guardada.motivo === 'Entrega de facturas del mes', 'y está de verdad en la base, no solo en pantalla');
+  // Consultar un ticket por id ya no es público: se verifica por la misma vía
+  // pública de verdad, /solicitudes/mias, que es la que usa "Mis servicios".
+  const mias = await (await fetch('/api/solicitudes/mias?dni=73012556')).json();
+  const guardada = mias.solicitudes.find(s => s.id === TICKET);
+  ok(guardada && guardada.motivo === 'Entrega de facturas del mes', 'y está de verdad en la base, no solo en pantalla');
+  ok(guardada.paradas.length === 1 && guardada.paradas[0].contacto === 'Recepción',
+     'con la parada adicional que se cargó en el formulario');
 
   $('qTicket').value = String(NUM);
   globalThis.consultarTicket();
@@ -159,7 +175,10 @@ try {
   await globalThis.setVehiculo(TICKET, 'Motorizado');
   await globalThis.setCosto(TICKET, '25');
   await globalThis.avanzar(TICKET);
-  const enRuta = await (await fetch('/api/solicitudes/' + TICKET)).json();
+  // Consultar un ticket suelto por id ya pide sesión de logística: se
+  // confirma con la copia local, que solo se actualiza cuando el servidor
+  // confirma el cambio (nunca al revés), así que sigue probando lo mismo.
+  const enRuta = bd.DB.solicitudes.find(s => s.id === TICKET);
   ok(enRuta.estado === 'En tránsito' && enRuta.vehiculo === 'Motorizado',
      'asignar transporte y avanzar quedó guardado en la base');
 
@@ -173,20 +192,34 @@ try {
 
   // -------------------------------------------------------------- histórico
   console.log('\n-- histórico --');
-  $('qHist').value = '';
-  globalThis.renderHistorico();
-  const hist = $('tHist').innerHTML;
-  const filasPintadas = (hist.match(/<tr>/g) || []).length - 1;   // menos la cabecera
-  ok(filasPintadas === 300,
-     `no vuelca las ${RESUMEN.servicios} filas de golpe: pinta ${filasPintadas}`);
-  ok(hist.includes('Se muestran los 300'), 'y avisa cuántas está mostrando de cuántas');
-  ok(Number($('cntHist').textContent) === RESUMEN.servicios + 1,
-     'el contador sigue diciendo el total de verdad');
+  $('qHist').value = ''; $('histTicket').value = ''; $('histDestino').value = '';
+  $('histDesde').value = ''; $('histHasta').value = '';
+  globalThis.filtrarHistorico();
+  const filas = () => ($('tHist').innerHTML.match(/<tr>/g) || []).length - 1;   // menos la cabecera
+  ok(filas() === 20, `pagina de a 20, no vuelca las ${RESUMEN.servicios + 1} filas de golpe: pinta ${filas()}`);
+  ok($('tHist').innerHTML.includes('Mostrando 1–20 de ' + (RESUMEN.servicios + 1)),
+     'y dice cuántas está mostrando de cuántas');
+  ok(Number($('cntHist').textContent) === RESUMEN.servicios + 1, 'el contador sigue diciendo el total de verdad');
 
-  $('qHist').value = 'prochilca';
-  globalThis.renderHistorico();
-  const filtrado = (($('tHist').innerHTML.match(/<tr>/g) || []).length) - 1;
-  ok(filtrado > 0 && filtrado < 300, `filtrar llega al resto (${filtrado} coincidencias)`);
+  globalThis.irPaginaHistorico(2);
+  ok($('tHist').innerHTML.includes('Mostrando 21–40 de ' + (RESUMEN.servicios + 1)), 'la página siguiente trae las 20 que siguen');
+
+  $('qHist').value = '73012556';
+  globalThis.filtrarHistorico();
+  ok($('tHist').innerHTML.includes('AVALOS'), 'el filtro de persona/DNI encuentra por documento');
+  ok($('tHist').innerHTML.includes('Mostrando 1–'), 'y un filtro nuevo vuelve a la página 1');
+
+  $('qHist').value = ''; $('histTicket').value = TICKET;
+  globalThis.filtrarHistorico();
+  ok(filas() === 1 && $('tHist').innerHTML.includes(TICKET), 'el filtro de ticket encuentra por número de ticket');
+
+  $('histTicket').value = ''; $('histDestino').value = bd.DB.destinos[0].nombre.slice(0, 12);
+  globalThis.filtrarHistorico();
+  ok(filas() > 0, 'el filtro de destino encuentra coincidencias');
+
+  globalThis.limpiarFiltrosHistorico();
+  ok(filas() === 20 && $('qHist').value === '' && $('histTicket').value === '' && $('histDestino').value === '',
+     'limpiar filtros vuelve al listado completo, página 1');
 
   globalThis.abrirExportarExcel();
   ok($('modalBody').innerHTML.includes('expDesde') && $('modalBody').innerHTML.includes('expHasta'),

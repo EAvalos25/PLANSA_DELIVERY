@@ -17,19 +17,26 @@ import { cargar } from './api/estado.js';
 import { DESTINOS_FRECUENTES } from '#data/destinos.js';
 import { sesion } from './state/sessionState.js';
 import { iniciarSincronizacion } from './render.js';
-import { alternarTema, actualizarBoton } from './ui/theme.js';
+import { aplicarTema, actualizarBoton } from './ui/theme.js';
 import { alternarAccesoLogistica, cerrarAccesoLogistica } from './ui/logisticaPopover.js';
 
 import { entrarSolicitante, pedirAutorizacion, entrarAdmin, salir, abrirCambioClave, guardarCambioClave } from './auth.js';
 import { tabUser, tabAdmin } from './views/tabs.js';
-import { setAccion, toggleOrigen, refrescarHoras, validarHoraViva, enviarSolicitud } from './views/requestForm.js';
-import { consultarTicket, renderMis } from './views/tickets.js';
 import {
-  renderBandeja, setFiltroBandeja, setVehiculo, setCosto, avanzar, verDetalle, cerrarModal
+  setAccion, toggleOrigen, refrescarHoras, validarHoraViva, enviarSolicitud,
+  agregarParada, editarParada, quitarParada
+} from './views/requestForm.js';
+import { consultarTicket, renderMis, cancelarMiSolicitud } from './views/tickets.js';
+import {
+  renderBandeja, setFiltroBandeja, setVehiculo, setCosto, avanzar, verDetalle, cerrarModal,
+  abrirCancelarSolicitud, mostrarDetalleCancelacion, confirmarCancelarSolicitud
 } from './views/dispatch.js';
-import { renderHistorico, exportarCSV, abrirExportarExcel, confirmarExportarExcel } from './views/history.js';
+import {
+  renderHistorico, exportarCSV, abrirExportarExcel, confirmarExportarExcel,
+  filtrarHistorico, irPaginaHistorico, limpiarFiltrosHistorico
+} from './views/history.js';
 import { setFiltroKpi } from './views/kpi.js';
-import { renderPadron, agregarPersona, quitarPersona, formAlta, rechazarAut, pedirAutorizacionStaff } from './views/roster.js';
+import { renderPadron, agregarPersona, quitarPersona, formAlta, rechazarAut } from './views/roster.js';
 import {
   renderUsuarios, crearUsuarioLogistica, restablecerClaveUsuarioVista, cambiarEstadoUsuarioVista
 } from './views/usuarios.js';
@@ -45,15 +52,18 @@ import {
 
 // ---- Puente hacia los atributos inline del HTML (estático y generado) ----
 Object.assign(window, {
-  alternarTema, alternarAccesoLogistica,
+  aplicarTema, alternarAccesoLogistica,
   pedirAutorizacion, entrarSolicitante, entrarAdmin, salir, abrirCambioClave, guardarCambioClave,
   setAccion, toggleOrigen, refrescarHoras, validarHoraViva, enviarSolicitud,
+  agregarParada, editarParada, quitarParada,
   tabUser, tabAdmin,
-  consultarTicket, renderMis,
+  consultarTicket, renderMis, cancelarMiSolicitud,
   renderBandeja, setFiltroBandeja, setVehiculo, setCosto, avanzar, verDetalle, cerrarModal,
+  abrirCancelarSolicitud, mostrarDetalleCancelacion, confirmarCancelarSolicitud,
   renderHistorico, exportarCSV, abrirExportarExcel, confirmarExportarExcel,
+  filtrarHistorico, irPaginaHistorico, limpiarFiltrosHistorico,
   setFiltroKpi,
-  renderPadron, agregarPersona, quitarPersona, formAlta, rechazarAut, pedirAutorizacionStaff,
+  renderPadron, agregarPersona, quitarPersona, formAlta, rechazarAut,
   renderUsuarios, crearUsuarioLogistica, restablecerClaveUsuarioVista, cambiarEstadoUsuarioVista,
   subirGuia, abrirAdjunto, eliminarAdjunto,
   renderPayback, setMotoPayback, setBonoPayback, setInicioPayback,
@@ -74,7 +84,6 @@ $('pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') entrarAd
 $('qTicket').addEventListener('keydown', e => { if (e.key === 'Enter') consultarTicket(); });
 $('qTicket').addEventListener('input', e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); });
 $('pDni').addEventListener('input', e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); });
-$('segDni').addEventListener('input', e => { e.target.value = e.target.value.replace(/[^0-9]/g, ''); });
 $('fTel').addEventListener('input', e => { e.target.value = e.target.value.replace(/\D/g, ''); });
 
 // ---- Arranque ----

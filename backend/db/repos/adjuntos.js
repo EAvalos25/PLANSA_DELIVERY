@@ -30,6 +30,15 @@ export function deTicket(ticketId) {
   ).all(String(ticketId)).map(aCamel);
 }
 
+/** Los adjuntos de varios tickets a la vez: para el paquete que se manda al solicitante. */
+export function deTickets(ticketIds) {
+  if (!ticketIds.length) return [];
+  const marcas = ticketIds.map(() => '?').join(',');
+  return db().prepare(
+    'SELECT * FROM adjuntos WHERE ticket_id IN (' + marcas + ') ORDER BY subido_en DESC'
+  ).all(...ticketIds).map(aCamel);
+}
+
 export function porId(id) {
   return aCamel(db().prepare('SELECT * FROM adjuntos WHERE id = ?').get(String(id)));
 }

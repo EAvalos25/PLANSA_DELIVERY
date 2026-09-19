@@ -9,15 +9,16 @@ import { sembrar } from './db/sembrar.js';
 import { api } from './rutas/index.js';
 import { noEncontrado, manejarErrores } from './middleware/errores.js';
 import { cabeceras, soloDatosPublicos } from './middleware/limites.js';
+import { origenPropio } from './middleware/origen.js';
 
 /**
  * Servidor de PLANSA Delivery.
  *
  * Sirve dos cosas: la API en /api y la aplicación del navegador. Está pensado
- * para correr en la red interna de la planta, no en internet: no hay sesiones
- * ni tokens, la puerta es la clave de logística que se verifica en el servidor.
- * Si algún día esto sale a internet, lo primero que hay que agregar es
- * autenticación de verdad.
+ * para correr en la red interna de la planta o por Tailscale, no expuesto a
+ * internet abierto. La red de confianza es una capa más, no un reemplazo de
+ * la autenticación: hay usuarios de logística con clave (ver backend/usuarios/)
+ * y el resto de la API se protege igual que si estuviera en internet.
  */
 
 export function crearApp() {
@@ -42,9 +43,12 @@ export function crearApp() {
   app.use(compression());
 
   app.use(express.json({ limit: '1mb' }));
-  app.use(express.urlencoded({ extended: false }));
+  // Sin express.urlencoded(): nada en el frontend manda formularios
+  // codificados así (todo va en JSON o multipart), y tenerlo montado dejaba
+  // que un <form> de una página ajena, con enctype por defecto, se
+  // interpretara igual que una petición legítima (ver middleware/origen.js).
 
-  app.use('/api', api);
+  app.use('/api', origenPropio, api);
 
   // --- estáticos ---
   // frontend/ es la raíz: lo que pida el navegador sale de ahí.

@@ -35,8 +35,8 @@ const servidor = iniciar({ puerto: 0, silencioso: true });
 await new Promise(r => servidor.once('listening', r));
 const BASE = 'http://127.0.0.1:' + servidor.address().port;
 
-const api = async (metodo, ruta, cuerpo, token) => {
-  const init = { method: metodo, headers: {} };
+const api = async (metodo, ruta, cuerpo, token, extra) => {
+  const init = { method: metodo, headers: { ...extra } };
   if (token) init.headers.Authorization = 'Bearer ' + token;
   if (cuerpo instanceof FormData) init.body = cuerpo;
   else if (cuerpo !== undefined) {
@@ -59,13 +59,19 @@ try {
   ok(salud.datos.solicitudes === SEMBRADOS, `y con el histórico 2026 (${salud.datos.solicitudes} servicios)`);
   ok(fs.existsSync(process.env.PLANSA_DB), 'el archivo SQLite existe en disco');
 
+  // Sin sesión -el caso del solicitante, que nunca tuvo clave- /estado ya NO
+  // trae el historial: antes cualquiera en la red se traía los 1600+
+  // servicios completos (DNI, teléfono, dirección) sin autenticarse.
   const estado = await api('GET', '/api/estado');
-  ok(estado.status === 200, 'GET /api/estado responde');
-  ok(estado.datos.totalPersonal === 212 && estado.datos.solicitudes.length === SEMBRADOS,
-     'el estado trae el histórico completo y el conteo del padrón');
+  ok(estado.status === 200, 'GET /api/estado responde sin sesión');
+  ok(estado.datos.totalPersonal === 212 && estado.datos.destinos.length > 0,
+     'trae lo público: conteo del padrón y catálogo de destinos');
+  ok(Array.isArray(estado.datos.solicitudes) && estado.datos.solicitudes.length === 0,
+     'pero NO el historial completo: sin sesión, la lista viene vacía');
+  ok(estado.datos.adjuntos.length === 0 && estado.datos.autorizaciones.length === 0,
+     'ni adjuntos ni autorizaciones tampoco');
   ok(estado.datos.personal === undefined,
      'y NO trae el padrón: son datos personales que la pantalla no necesita en bloque');
-  ok(estado.datos.destinos.length > 0, 'y el catálogo de destinos con sus tarifas');
   ok(!('usuarios' in estado.datos) && !JSON.stringify(estado.datos).includes('claveHash'),
      'ninguna clave ni hash de usuario viaja al navegador');
 
@@ -94,6 +100,25 @@ try {
      'sin sesión, ni siquiera se puede buscar en el padrón');
   ok((await api('GET', '/api/auth/yo', undefined, tokenAdmin)).datos.usuario === 'admin',
      'con el token, el servidor sabe quién es');
+
+  // Con sesión de logística, /estado sí trae todo: es quien tiene que ver la
+  // bandeja, el histórico y los indicadores completos.
+  const estadoStaff = await api('GET', '/api/estado', undefined, tokenAdmin);
+  ok(estadoStaff.datos.solicitudes.length === SEMBRADOS, 'con sesión, /estado sí trae el historial completo');
+  ok(estadoStaff.datos.autorizaciones !== undefined && estadoStaff.datos.adjuntos !== undefined,
+     'y también adjuntos y autorizaciones');
+
+  // ------------------------------------------------- mis servicios (DNI)
+  console.log('\n-- mis servicios, por DNI --');
+  ok((await api('GET', '/api/solicitudes/mias')).status === 400, 'sin DNI no trae nada');
+  ok((await api('GET', '/api/solicitudes/mias?dni=abc')).status === 400, 'ni con un documento inválido');
+  const mias = await api('GET', '/api/solicitudes/mias?dni=73012556');
+  ok(mias.status === 200 && Array.isArray(mias.datos.solicitudes), 'con un DNI válido, sin sesión, sí responde');
+  ok(mias.datos.solicitudes.every(s => s.dni === '73012556'),
+     'y solo trae servicios de ESE documento, ninguno de otra persona');
+  ok(Array.isArray(mias.datos.adjuntos), 'junto con los adjuntos de esos tickets (puede venir vacío)');
+  ok((await api('GET', '/api/solicitudes/mias?dni=99999999')).datos.solicitudes.length === 0,
+     'un documento sin servicios trae la lista vacía, no un error');
 
   // ---------------------------------------------------------- usuarios
   console.log('\n-- cuentas de logística --');
@@ -144,14 +169,16 @@ try {
 
   // ------------------------------------------------------------ personal
   console.log('\n-- padrón --');
+  ok((await api('GET', '/api/personal', undefined, tokenSeg)).status === 403,
+     'seguimiento no tiene acceso a "Padrón y accesos": ni para buscar');
+
   const sinBuscar = await api('GET', '/api/personal', undefined, tokenAdmin);
   ok(Array.isArray(sinBuscar.datos.resultados) && sinBuscar.datos.resultados.length === 0,
      'sin búsqueda no se vuelca el padrón completo');
   ok(sinBuscar.datos.total === 212, 'pero sí dice cuántos hay');
 
-  const busq = await api('GET', '/api/personal?q=avalos', undefined, tokenSeg);
-  ok(busq.datos.length === 1 && busq.datos[0].dni === '73012556',
-     'la búsqueda por apellido encuentra, también con la sesión de seguimiento');
+  const busq = await api('GET', '/api/personal?q=avalos', undefined, tokenAdmin);
+  ok(busq.datos.length === 1 && busq.datos[0].dni === '73012556', 'la búsqueda por apellido encuentra');
   ok((await api('GET', '/api/personal?q=nunez', undefined, tokenAdmin)).datos.length > 0,
      'y encuentra NÚÑEZ escrito sin tildes');
 
@@ -211,6 +238,87 @@ try {
   ok(cerrada.datos.estado === 'Concluido' && cerrada.datos.tsConcluido, 'se cierra y queda la hora de cierre');
   ok((await api('PATCH', '/api/solicitudes/' + id, { costo: 99 }, tokenSeg)).status === 409,
      'un ticket concluido ya no se modifica');
+  ok(Array.isArray(cerrada.datos.paradas) && cerrada.datos.paradas.length === 0,
+     'un ticket de una sola ruta trae "paradas" vacío, no ausente');
+
+  // ------------------------------------------------- paradas adicionales
+  console.log('\n-- dos o más rutas en una programación --');
+  const conParadas = await api('POST', '/api/solicitudes', {
+    ...nueva,
+    paradas: [
+      { destino: 'CLIENTE DOS, AV. JAVIER PRADO 1200, SAN ISIDRO', contacto: 'Recepción', telefono: '999888777' },
+      { destino: 'CLIENTE TRES, JR. LAMPA 500, CERCADO DE LIMA' }
+    ]
+  });
+  ok(conParadas.status === 201, 'se registra un servicio con paradas adicionales');
+  ok(conParadas.datos.destino === nueva.destino, 'el primer destino sigue siendo el campo de siempre');
+  ok(conParadas.datos.paradas.length === 2, 'trae las dos paradas de más');
+  ok(conParadas.datos.paradas[0].orden === 1 && conParadas.datos.paradas[1].orden === 2,
+     'en el orden en que se cargaron');
+  ok(conParadas.datos.paradas[0].contacto === 'Recepción' && conParadas.datos.paradas[0].telefono === '999888777',
+     'con su contacto y teléfono cuando se dan');
+  ok(conParadas.datos.paradas[1].contacto === '' && conParadas.datos.paradas[1].telefono === '',
+     'y en blanco cuando no, sin exigirlos');
+
+  ok((await api('GET', '/api/solicitudes/' + conParadas.datos.id)).status === 401,
+     'consultar un ticket por id ya tampoco es público');
+  const relecturaConParadas = await api('GET', '/api/solicitudes/' + conParadas.datos.id, undefined, tokenAdmin);
+  ok(relecturaConParadas.datos.paradas.length === 2, 'con sesión, las paradas se releen igual desde GET /solicitudes/:id');
+
+  const listado = await api('GET', '/api/solicitudes', undefined, tokenAdmin);
+  const enListado = listado.datos.find(s => s.id === conParadas.datos.id);
+  ok(enListado.paradas.length === 2, 'y también vienen en el listado completo, no solo al pedir uno por uno');
+
+  ok((await api('POST', '/api/solicitudes', {
+    ...nueva, paradas: [{ destino: 'AV' }]
+  })).status === 400, 'una parada con dirección demasiado corta rechaza todo el registro');
+  ok((await api('GET', '/api/solicitudes', undefined, tokenAdmin)).datos.length === listado.datos.length,
+     'y no deja a medias ni el ticket ni las paradas: la transacción se revierte completa');
+
+  // -------------------------------------------------------- cancelación
+  console.log('\n-- cancelar un servicio --');
+  const otraId = otra.datos.id;
+  ok((await api('POST', '/api/solicitudes/' + otraId + '/cancelar')).datos.estado === 'Cancelado',
+     'el propio solicitante cancela lo suyo, sin sesión y sin elegir motivo');
+  const canceladaSolicitante = await api('GET', '/api/solicitudes/' + otraId, undefined, tokenAdmin);
+  ok(canceladaSolicitante.datos.motivoCancelacion === 'Usuario solicitó baja'
+     && canceladaSolicitante.datos.canceladoPor === 'Solicitante',
+     'el servidor pone el motivo solo, y anota que fue el solicitante');
+  const viaMias = (await api('GET', '/api/solicitudes/mias?dni=' + nueva.dni)).datos.solicitudes.find(s => s.id === otraId);
+  ok(viaMias && viaMias.estado === 'Cancelado',
+     'y el propio solicitante -sin sesión- también lo ve así por la vía pública real, /solicitudes/mias');
+  ok((await api('POST', '/api/solicitudes/' + otraId + '/cancelar')).status === 409,
+     'cancelarlo dos veces responde 409');
+  ok((await api('PATCH', '/api/solicitudes/' + otraId, { costo: 10 }, tokenAdmin)).status === 409,
+     'un ticket cancelado ya no se modifica');
+  ok((await api('POST', '/api/solicitudes/' + otraId + '/avanzar', undefined, tokenAdmin)).status === 409,
+     'ni avanza');
+
+  const paraStaff = (await api('POST', '/api/solicitudes', nueva)).datos.id;
+  ok((await api('POST', '/api/solicitudes/' + paraStaff + '/cancelar', {}, tokenSeg)).status === 400,
+     'logística sí tiene que elegir un motivo');
+  ok((await api('POST', '/api/solicitudes/' + paraStaff + '/cancelar', { motivo: 'Inventado' }, tokenSeg)).status === 400,
+     'y no vale cualquier texto: son los tres fijos');
+  ok((await api('POST', '/api/solicitudes/' + paraStaff + '/cancelar', { motivo: 'Otros' }, tokenSeg)).status === 400,
+     '"Otros" exige el detalle');
+  const cancStaff = await api('POST', '/api/solicitudes/' + paraStaff + '/cancelar',
+    { motivo: 'Otros', detalle: 'Cliente cambió de dirección' }, tokenSeg);
+  ok(cancStaff.status === 200 && cancStaff.datos.estado === 'Cancelado', 'con motivo y detalle, seguimiento sí puede cancelar');
+  ok(cancStaff.datos.motivoCancelacionDetalle === 'Cliente cambió de dirección' && cancStaff.datos.canceladoPor === 'jperez',
+     'y queda el detalle y quién lo hizo (su usuario), no un genérico "Solicitante"');
+
+  // Logística puede cancelar uno que ya salió; el solicitante, no.
+  const enRuta = (await api('POST', '/api/solicitudes', nueva)).datos.id;
+  await api('PATCH', '/api/solicitudes/' + enRuta, { vehiculo: 'Motorizado' }, tokenAdmin);
+  await api('POST', '/api/solicitudes/' + enRuta + '/avanzar', undefined, tokenAdmin);
+  ok((await api('POST', '/api/solicitudes/' + enRuta + '/cancelar')).status === 409,
+     'el solicitante ya no puede cancelar uno que salió: "pide a logística que lo cancele"');
+  ok((await api('POST', '/api/solicitudes/' + enRuta + '/cancelar',
+    { motivo: 'No autorizado' }, tokenAdmin)).datos.estado === 'Cancelado',
+     'pero admin sí, incluso "En tránsito"');
+
+  ok((await api('POST', '/api/solicitudes/REQ-999999/cancelar', { motivo: 'Otros', detalle: 'x' }, tokenAdmin)).status === 404,
+     'cancelar un ticket que no existe responde 404');
 
   // ---------------------------------------------------- exportar a Excel
   // Es un binario, no JSON: no pasa por el helper `api()`, que decodifica la
@@ -259,16 +367,17 @@ try {
 
   // ------------------------------------------------------- autorizaciones
   console.log('\n-- autorizaciones --');
-  // Pedirla es autoservicio: la usa tanto el solicitante como logística de
-  // seguimiento al toparse con alguien no identificado, sin distinción.
+  // Pedirla sigue siendo autoservicio del solicitante, sin sesión. Verla y
+  // resolverla es "Padrón y accesos": cosa de admin, seguimiento no entra.
   const pedido = await api('POST', '/api/autorizaciones', { dni: '99999999' });
   ok(pedido.status === 201 && pedido.datos.repetido === false, 'se registra un pedido de acceso sin sesión');
   ok((await api('POST', '/api/autorizaciones', { dni: '99999999' })).datos.repetido === true,
      'pedirlo dos veces no duplica');
-  ok((await api('GET', '/api/autorizaciones', undefined, tokenSeg)).status === 200,
-     'seguimiento puede ver la lista de pedidos pendientes');
+  ok((await api('GET', '/api/autorizaciones', undefined, tokenSeg)).status === 403,
+     'seguimiento no puede ver la lista de pedidos pendientes: es "Padrón y accesos"');
+  ok((await api('GET', '/api/autorizaciones', undefined, tokenAdmin)).status === 200, 'admin sí');
   ok((await api('PATCH', '/api/autorizaciones/99999999', { estado: 'Rechazada' }, tokenSeg)).status === 403,
-     'pero resolverla —aprobar o rechazar— es cosa de admin');
+     'y resolverla —aprobar o rechazar— tampoco es suyo');
   ok((await api('PATCH', '/api/autorizaciones/99999999', { estado: 'Rechazada' }, tokenAdmin)).status === 200,
      'admin sí puede rechazarlo');
   ok((await api('PATCH', '/api/autorizaciones/99999999', { estado: 'Rechazada' }, tokenAdmin)).status === 404,
@@ -320,6 +429,17 @@ try {
   rechazado.append('archivo', new Blob([Buffer.from('MZ')], { type: 'application/x-msdownload' }), 'virus.exe');
   ok((await api('POST', '/api/adjuntos', rechazado, tokenAdmin)).status === 415, 'un ejecutable se rechaza con 415');
 
+  // Declarar "es una imagen" no alcanza: el contenido real tiene que empezar
+  // como una imagen de verdad, o se rechaza igual aunque el tipo declarado
+  // esté en la lista permitida.
+  const disfrazado = new FormData();
+  disfrazado.append('ticketId', id);
+  disfrazado.append('archivo', new Blob([Buffer.from('<script>alert(1)</script>')], { type: 'image/jpeg' }), 'foto.jpg');
+  const rtaDisfrazado = await api('POST', '/api/adjuntos', disfrazado, tokenAdmin);
+  ok(rtaDisfrazado.status === 415, 'un archivo que dice ser imagen pero no lo es, también se rechaza');
+  ok(fs.readdirSync(process.env.PLANSA_UPLOADS).filter(f => f.endsWith('.jpg')).length === 0,
+     'y no queda guardado en el disco ni un instante');
+
   const sinTicket = new FormData();
   sinTicket.append('ticketId', 'REQ-999999');
   sinTicket.append('archivo', new Blob([contenido], { type: 'application/pdf' }), 'x.pdf');
@@ -328,8 +448,9 @@ try {
   ok((await api('GET', '/api/salud')).datos.adjuntosHuerfanos === 0,
      'y no deja el archivo suelto en disco cuando el registro falla');
 
-  const delTicket = await api('GET', '/api/adjuntos?ticket=' + id);
-  ok(delTicket.datos.length === 2, 'se listan los adjuntos de un ticket, sin sesión');
+  ok((await api('GET', '/api/adjuntos?ticket=' + id)).status === 401, 'listar adjuntos también pide sesión de logística');
+  const delTicket = await api('GET', '/api/adjuntos?ticket=' + id, undefined, tokenAdmin);
+  ok(delTicket.datos.length === 2, 'con sesión, se listan los adjuntos de un ticket');
 
   ok((await api('DELETE', '/api/adjuntos/' + subido.datos.id)).status === 401, 'borrar uno sí exige sesión');
   ok((await api('DELETE', '/api/adjuntos/' + subido.datos.id, undefined, tokenAdmin)).status === 200, 'se puede borrar un adjunto');
@@ -396,12 +517,18 @@ try {
      'una clave de menos de 6 caracteres se rechaza');
   ok((await api('PUT', '/api/auth/clave', { actual: 'admin', nueva: 'admin' }, tokenAdmin)).status === 400,
      'y una igual a la actual también');
-  ok((await api('PUT', '/api/auth/clave', { actual: 'admin', nueva: 'claveNueva1' }, tokenAdmin)).status === 200,
-     'con la clave actual sí se cambia');
+  ok((await api('GET', '/api/auth/yo', undefined, tokenAdmin)).status === 200, 'el token de antes del cambio, por ahora, funciona');
+  const cambioClave = await api('PUT', '/api/auth/clave', { actual: 'admin', nueva: 'claveNueva1' }, tokenAdmin);
+  ok(cambioClave.status === 200 && cambioClave.datos.token, 'con la clave actual sí se cambia, y devuelve un token nuevo');
   ok((await api('POST', '/api/auth/ingresar', { usuario: 'admin', clave: 'claveNueva1' })).datos.debeCambiarClave === false,
      'la nueva clave funciona y ya no pide cambiarla');
   ok((await api('POST', '/api/auth/ingresar', { usuario: 'admin', clave: 'admin' })).status === 401,
      'y la vieja deja de funcionar');
+  ok((await api('GET', '/api/auth/yo', undefined, tokenAdmin)).status === 401,
+     'cambiar la clave cierra la sesión que estaba abierta antes -por si el token viejo estaba comprometido-');
+  ok((await api('GET', '/api/auth/yo', undefined, cambioClave.datos.token)).status === 200,
+     'pero el token nuevo que devolvió la respuesta sí sirve, para no dejar afuera a quien la cambió');
+  tokenAdmin = cambioClave.datos.token;
 
   // --------------------------------------------------- freno de intentos
   // Pocas cuentas y un usuario adivinable ('admin'): sin freno se prueba el
@@ -424,11 +551,141 @@ try {
      'pasado el castigo, la clave correcta vuelve a entrar');
   olvidarIntentos();
 
+  // ---------------------------------------------------------- inundación
+  console.log('\n-- freno de inundación (rutas públicas de escritura) --');
+  const { olvidarPeticiones } = await import('../backend/middleware/limites.js');
+  olvidarPeticiones();
+  let inundada = null;
+  for (let i = 0; i < 13 && inundada === null; i++) {
+    const r = await api('POST', '/api/autorizaciones', { dni: '9' + String(i).padStart(7, '0') });
+    if (r.status === 429) inundada = i;
+  }
+  ok(inundada === 10, `POST /autorizaciones también se frena por volumen, no solo por fallos (al intento ${inundada})`);
+  olvidarPeticiones();
+
+  // ------------------------------------------------------------- csrf
+  // Un <form> ajeno, sin JavaScript, puede mandar un POST con Content-Type
+  // application/x-www-form-urlencoded o multipart -eso el navegador lo deja
+  // igual entre sitios-. La defensa es doble: express.urlencoded() ya no está
+  // montado (no hay quién interprete ese cuerpo) y, aparte, se rechaza
+  // cualquier escritura cuyo Origin no sea el propio servidor.
+  console.log('\n-- csrf: origen ajeno --');
+  const ajeno = await fetch(BASE + '/api/solicitudes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: 'https://sitio-ajeno.evil' },
+    body: JSON.stringify(nueva)
+  });
+  ok(ajeno.status === 403, 'un POST con Origin de otro sitio se rechaza, sin llegar a crear nada');
+  const propio = await fetch(BASE + '/api/solicitudes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: BASE },
+    body: JSON.stringify(nueva)
+  });
+  ok(propio.status === 201, 'con el Origin del propio servidor, sí se acepta');
+  const formAjeno = new URLSearchParams({ tipo: 'Entregar', servicio: 'x', destino: 'y'.repeat(10) });
+  const formResp = await fetch(BASE + '/api/solicitudes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: 'https://sitio-ajeno.evil' },
+    body: formAjeno.toString()
+  });
+  ok(formResp.status === 403, 'y un <form> clásico (urlencoded) desde otro origen, igual');
+
+  // Defensa independiente: aunque alguien lograra un Origin propio (por
+  // ejemplo, un XSS en la propia página), un cuerpo urlencoded ya no se
+  // interpreta -no hay express.urlencoded() montado-, así que llega vacío y
+  // la validación normal del campo lo rechaza igual que a cualquier body malo.
+  const formPropio = await fetch(BASE + '/api/solicitudes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: BASE },
+    body: formAjeno.toString()
+  });
+  ok(formPropio.status === 400, 'y aunque el origen sea el propio, un cuerpo urlencoded ya no se interpreta');
+
+  // ------------------------------------------------------------- salud
+  console.log('\n-- salud: sin rutas de archivos en lo público --');
+  const saludPublica = await api('GET', '/api/salud');
+  ok(!('baseDatos' in saludPublica.datos) && !('subidas' in saludPublica.datos),
+     '/salud pública no dice dónde vive la base ni las subidas en el disco');
+  ok((await api('GET', '/api/salud/detalle')).status === 401, 'el detalle con las rutas pide sesión');
+  ok((await api('GET', '/api/salud/detalle', undefined, tokenSeg)).status === 403,
+     'y de admin puntualmente, no de cualquier logística');
+  const detalle = await api('GET', '/api/salud/detalle', undefined, tokenAdmin);
+  ok(detalle.status === 200 && detalle.datos.baseDatos, 'admin sí ve dónde está la base, para diagnosticar');
+
+  // ------------------------------------------------------ auditoría
+  console.log('\n-- log de seguridad --');
+  ok((await api('GET', '/api/seguridad/eventos')).status === 401, 'el log de auditoría no es público');
+  ok((await api('GET', '/api/seguridad/eventos', undefined, tokenSeg)).status === 403,
+     'ni para cualquier cuenta de logística: solo admin');
+  const eventos = await api('GET', '/api/seguridad/eventos?limite=500', undefined, tokenAdmin);
+  ok(eventos.status === 200 && Array.isArray(eventos.datos), 'admin sí puede leerlo');
+  const tipos = eventos.datos.map(e => e.tipo);
+  for (const t of ['login_exitoso', 'login_fallido', 'usuario_creado', 'cambio_clave']) {
+    ok(tipos.includes(t), 'quedó registrado al menos un evento "' + t + '"');
+  }
+  ok(!JSON.stringify(eventos.datos).match(/claveNueva1|admin123|scrypt\$|[0-9a-f]{32,}:[0-9a-f]{32,}/),
+     'y en ninguna fila aparece una clave ni un hash: el detalle es solo contexto legible');
+
+  // -------------------------------------------------- carga: uso simultáneo
+  // No alcanza con revisar el código y confiar en que WAL + índices bastan:
+  // acá se dispara de verdad el tráfico de una planta llena registrando a la
+  // vez -30 solicitantes distintos, cada uno en su propia IP de LAN/Tailscale,
+  // más logística subiendo guías- y se comprueba que nada se pierde, nada
+  // choca y nada se queda esperando más de lo razonable.
+  console.log('\n-- carga: registros y subidas simultáneas --');
+  olvidarPeticiones();
+  olvidarIntentos();
+
+  const antesDeCarga = (await api('GET', '/api/salud')).datos.solicitudes;
+  const USUARIOS = 30;
+  const inicioCarga = Date.now();
+
+  const registros = await Promise.all(
+    Array.from({ length: USUARIOS }, (_, i) => api('POST', '/api/solicitudes', {
+      ...nueva, dni: String(70000000 + i), telefono: '9' + String(10000000 + i)
+    }, undefined, { 'X-Forwarded-For': '10.20.30.' + (i + 1) }))
+  );
+  const duracionCarga = Date.now() - inicioCarga;
+
+  ok(registros.every(r => r.status === 201), `los ${USUARIOS} registros simultáneos se aceptan (ninguno se cae ni se frena entre sí)`);
+  const idsUnicos = new Set(registros.map(r => r.datos.id));
+  ok(idsUnicos.size === USUARIOS, 'cada uno recibe un correlativo distinto, sin choques por la escritura concurrente');
+  ok(duracionCarga < 8000, `y responde en un tiempo razonable (${duracionCarga} ms para ${USUARIOS} registros a la vez)`);
+
+  const despuesDeCarga = (await api('GET', '/api/salud')).datos.solicitudes;
+  ok(despuesDeCarga === antesDeCarga + USUARIOS, 'los 30 quedaron guardados en la base, ni uno de más ni de menos');
+
+  // Logística subiendo guías de entrega al mismo tiempo que entran solicitudes
+  // nuevas: dos flujos que no deberían pisarse porque escriben en tablas y
+  // con locks distintos.
+  const SUBIDAS = 10;
+  const ticketsParaSubir = registros.slice(0, SUBIDAS).map(r => r.datos.id);
+  const inicioSubidas = Date.now();
+  const subidas = await Promise.all(
+    ticketsParaSubir.map((ticketId, i) => {
+      const forma = new FormData();
+      forma.append('ticketId', ticketId);
+      forma.append('subidoPor', 'Carga ' + i);
+      forma.append('archivo', new Blob([Buffer.from('%PDF-1.4 carga ' + i)], { type: 'application/pdf' }), 'guia-' + i + '.pdf');
+      return api('POST', '/api/adjuntos', forma, i % 2 === 0 ? tokenAdmin : tokenSeg, { 'X-Forwarded-For': '10.20.31.' + (i + 1) });
+    })
+  );
+  const duracionSubidas = Date.now() - inicioSubidas;
+
+  ok(subidas.every(s => s.status === 201), `las ${SUBIDAS} subidas de guías simultáneas también se aceptan todas`);
+  const archivosUnicos = new Set(subidas.map(s => s.datos.archivo));
+  ok(archivosUnicos.size === SUBIDAS, 'cada archivo queda con nombre único en disco, sin pisarse entre sí');
+  ok(duracionSubidas < 8000, `y también en tiempo razonable (${duracionSubidas} ms para ${SUBIDAS} subidas a la vez)`);
+  ok((await api('GET', '/api/salud')).datos.adjuntosHuerfanos === 0, 'ninguna quedó huérfana por una escritura a medias');
+
+  olvidarPeticiones();
+  olvidarIntentos();
+
   // ------------------------------------------------------------- errores
   console.log('\n-- errores --');
   const noExiste = await api('GET', '/api/no-existe');
   ok(noExiste.status === 404 && noExiste.datos.error, 'una ruta inexistente responde 404 con mensaje');
-  ok((await api('GET', '/api/solicitudes/REQ-999999')).status === 404, 'un ticket inexistente responde 404');
+  ok((await api('GET', '/api/solicitudes/REQ-999999', undefined, tokenAdmin)).status === 404, 'un ticket inexistente responde 404');
 
 } finally {
   servidor.close();

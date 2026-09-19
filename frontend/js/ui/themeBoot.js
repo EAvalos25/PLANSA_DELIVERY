@@ -13,7 +13,7 @@
   var tema = 'light';
   try {
     var guardado = localStorage.getItem(TEMA_KEY);
-    if (guardado === 'dark' || guardado === 'light') tema = guardado;
+    if (guardado === 'dark' || guardado === 'light' || guardado === 'black') tema = guardado;
   } catch (e) { /* almacenamiento bloqueado: se queda en claro */ }
   document.documentElement.setAttribute('data-theme', tema);
 })();

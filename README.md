@@ -66,12 +66,14 @@ backend/                     ← NODE.JS. Nada de esto llega al navegador.
   servidor.js                 Express: API, estáticos, apagado ordenado
   config.js                   Puerto, rutas y límites; todo por variable de entorno
   db/
-    esquema.sql               DDL de las tablas: la forma de los datos
+    esquema.sql               DDL de las tablas: la forma de los datos, para una base nueva
+    migrar.js                 Cambios de forma en una base que ya existe
     conexion.js               SQLite (node:sqlite), transacciones, snake_case ↔ camelCase
     sembrar.js                Carga inicial: padrón + histórico 2026
     repos/                    Único sitio del proyecto que escribe SQL
       personal.js              padrón y búsqueda
       solicitudes.js           tickets, correlativo y flujo de estados
+      paradas.js               destinos adicionales de un servicio con dos o más rutas
       autorizaciones.js        pedidos de acceso
       adjuntos.js              metadatos de las guías
       ajustes.js               testigo de revisión
@@ -91,7 +93,7 @@ backend/                     ← NODE.JS. Nada de esto llega al navegador.
 
 frontend/                    ← NAVEGADOR
   index.html                  Marcado de las vistas + import map
-  css/styles.css              Hoja de estilos única (claro/oscuro)
+  css/styles.css              Hoja de estilos única (claro/oscuro/negro)
   js/
     main.js                   Arranque, listeners y puente window.*
     auth.js                   Ingreso por DNI / usuario+clave, apertura de vistas
@@ -109,6 +111,7 @@ frontend/                    ← NAVEGADOR
 shared/                      ← CÁLCULO PURO. Lo usan el servidor Y el navegador.
   documento.js                Validar y normalizar un DNI, sin el padrón al lado
   exportarViajes.js           Columnas del reporte Excel (hoy solo las usa el servidor)
+  cancelacion.js              Los tres motivos de cancelación, en un solo lugar
   payback/                    Sin DOM, sin base de datos, sin red: se verifica
     planilla.js               en Node número por número.
     flota.js  demanda.js  capacidad.js  ruta.js  devengos.js
@@ -163,6 +166,17 @@ Todo el SQL está en `backend/db/repos/`. Ninguna ruta, ninguna vista y ningún
 cálculo escriben una consulta: si mañana esto se muda a PostgreSQL, se
 reescriben esos cinco archivos y nada más.
 
+### Migraciones (`backend/db/migrar.js`)
+
+`esquema.sql` usa `CREATE TABLE IF NOT EXISTS`: sirve para una base nueva,
+pero no le cambia nada a una que ya existe con una forma anterior -y SQLite
+tampoco deja alterar un `CHECK` con `ALTER TABLE`-. `migrar()` se corre solo,
+al abrir la base (`conexion.js`), y aplica en orden las migraciones que
+falten según `esquema_version` en `ajustes`; cada una se salta sola si ya se
+aplicó. La primera (v2) agregó el estado `Cancelado` y sus columnas de motivo
+a `solicitudes`, recreando la tabla sin perder una fila -incluida la relación
+con `adjuntos`, que la referencia por clave foránea-.
+
 ### Sincronización entre pestañas
 
 Cada escritura mueve un testigo de revisión. El navegador sondea solo ese valor
@@ -212,13 +226,14 @@ exponer la carpeta permitiría listarla y adivinar nombres.
 | `POST /api/auth/salir` | Cierra el token actual | logística |
 | `GET /api/auth/yo` | Quién es, según el token | logística |
 | `PUT /api/auth/clave` | Cambia la clave propia (pidiendo la vigente) | logística |
-| `GET /api/personal?q=` | Busca en el padrón; sin `q` no devuelve nada | logística |
 | `PATCH /api/solicitudes/:id` | Transporte y tarifa | logística |
 | `POST /api/solicitudes/:id/avanzar` | Mueve el ticket por el flujo | logística |
+| `POST /api/solicitudes/:id/cancelar` | Cancela un servicio | — / logística* |
 | `POST/DELETE /api/adjuntos` | Sube o quita una guía | logística |
-| `GET /api/autorizaciones` | Lista los pedidos pendientes | logística |
 | `GET /api/solicitudes/exportar` | Reporte de viajes en Excel, con `?desde=&hasta=` opcionales | logística |
+| `GET /api/personal?q=` | Busca en el padrón; sin `q` no devuelve nada | **admin** |
 | `POST/DELETE /api/personal` | Alta y baja manual en el padrón | **admin** |
+| `GET /api/autorizaciones` | Lista los pedidos pendientes | **admin** |
 | `PATCH /api/autorizaciones/:dni` | Aprueba o rechaza un pedido | **admin** |
 | `GET /api/payback` | El análisis completo, en JSON | **admin** |
 | `GET/POST /api/usuarios` | Lista y crea cuentas de logística | **admin** |
@@ -233,6 +248,13 @@ ocultar un botón evita confundir a quien no puede usarlo, pero quien llame a
 la API directo sin el rol que toca recibe igual 401 (sin sesión) o 403 (con
 sesión, pero rol insuficiente).
 
+\* Cancelar es la única ruta con sesión OPCIONAL (`sesionOpcional` en
+`backend/usuarios/middleware.js`): sin token es el propio solicitante
+cancelando lo suyo -motivo fijo "Usuario solicitó baja", solo mientras sigue
+"En espera"-; con sesión de logística hay que elegir motivo (uno de tres, con
+detalle obligatorio si es "Otros") y también se puede cancelar uno "En
+tránsito". Ver [Cancelar un servicio](#cancelar-un-servicio).
+
 Las validaciones de negocio también están en el servidor, no solo en la
 pantalla: sin transporte no hay salida, sin tarifa no hay cierre, y un ticket
 concluido ya no se modifica. Confiar en que el navegador lo valide deja la
@@ -240,16 +262,67 @@ puerta abierta a que un ticket se cierre sin costo y los indicadores mientan.
 
 ### Dos formas de exportar el histórico
 
-- **CSV** (botón "Descargar CSV", 100 % en el navegador): 24 columnas en
+- **CSV** (botón "Descargar CSV", 100 % en el navegador): 29 columnas en
   snake_case, todo como texto. Es el que consume Power BI / Looker Studio —
-  no se le cambió una columna al agregar el Excel, para no romper ningún
-  tablero que ya apunte a ese archivo.
+  las columnas nuevas (cancelación, paradas) se agregaron al final, para no
+  romper ningún tablero que ya apunte a las que había antes.
 - **Excel** (botón "Exportar a Excel", `GET /api/solicitudes/exportar`, lo
   arma el servidor con `exceljs`): las mismas columnas, pero con encabezados
   legibles y celdas TIPADAS -fecha y número de verdad, no texto-, para
   ordenar, sumar o armar una tabla dinámica en la propia hoja sin pasos
   previos. Acepta `?desde=AAAA-MM-DD&hasta=AAAA-MM-DD` para acotar por la
   fecha programada del viaje; sin ninguno de los dos, exporta todo.
+
+### Histórico: filtros y paginación
+
+La tabla pagina de a 20 filas -no un tope fijo con aviso de recorte, como
+antes- para poder llegar a cualquier servicio pasando página, sin importar
+cuántos haya. Cuatro filtros, combinables: **persona o DNI**, **ticket**,
+**destino** y **rango de fechas** (por la fecha programada del viaje). El
+botón "Exportar a Excel" toma como punto de partida el rango de fechas que ya
+esté puesto en los filtros de la tabla.
+
+### Transporte: iconos, no solo texto
+
+Donde se muestra el vehículo asignado -bandeja, "Gestionar", seguimiento del
+solicitante e histórico- va acompañado de un icono: una moto para
+"Motorizado", un auto para "Carro". Es puramente visual (`iconoVehiculo` /
+`vehiculoHTML` en `frontend/js/views/presenters.js`); el valor que se guarda y
+se valida en el servidor no cambió.
+
+### Dos o más rutas en una misma programación
+
+Un servicio puede tener más de un destino: en "Nueva solicitud", el botón
+"+ Agregar otra parada" agrega cuantas rutas adicionales hagan falta, cada una
+con su propio destino (obligatorio, misma regla que el destino principal) y
+contacto/teléfono (opcionales). El primer destino sigue siendo el campo de
+siempre -`solicitudes.destino`-, así que nada de lo que ya existía tuvo que
+cambiar; las paradas de más viven en su propia tabla (`paradas`, ver
+`backend/db/repos/paradas.js`) y solo se cargan al crear el ticket, no se
+editan después. Se muestran en el detalle del ticket (bandeja, "Gestionar",
+seguimiento del solicitante) y se exportan en su propia columna, tanto en el
+CSV como en el Excel.
+
+---
+
+## Cancelar un servicio
+
+Un ticket cancelado no se ejecuta: queda como estado terminal (`Cancelado`),
+igual de definitivo que `Concluido`, pero sin costo ni indicadores asociados.
+No se borra —se audita—, con motivo, quién lo hizo y cuándo.
+
+- **El propio solicitante** cancela lo suyo desde "Mis servicios", sin elegir
+  motivo -el servidor pone "Usuario solicitó baja" solo- y solo mientras el
+  ticket sigue "En espera": una vez que salió un mensajero, ya no es
+  autoservicio.
+- **Logística** (admin o seguimiento) cancela desde el modal "Gestionar" de
+  la bandeja o el histórico, con uno de tres motivos obligatorios —"Usuario
+  solicitó baja", "No autorizado" u "Otros" (este último con detalle en texto
+  libre)— y puede cancelar también uno que ya está "En tránsito".
+- Un ticket `Cancelado` ya no admite cambios de transporte/tarifa ni avanzar
+  de estado, igual que uno `Concluido`.
+- Los indicadores (KPI) excluyen los cancelados del valorizado, el promedio de
+  viajes y los rankings; se cuentan aparte, en su propia tarjeta.
 
 ---
 
@@ -262,8 +335,8 @@ padrón — y ahora hace falta usuario y clave para todo.
 
 | Rol | Puede |
 |---|---|
-| `admin` | Todo: bandeja, histórico, indicadores, payback, alta/baja en el padrón, resolver autorizaciones, crear y administrar usuarios. |
-| `seguimiento` | Bandeja de despacho e histórico: asignar transporte y tarifa, mover el ticket por el flujo, subir o quitar guías de entrega. Si se topa con alguien fuera del padrón, **pide autorización** (igual que hace el propio solicitante) en vez de darlo de alta directo. |
+| `admin` | Todo: bandeja, histórico, indicadores, payback, "Padrón y accesos" (alta/baja, resolver autorizaciones), crear y administrar usuarios. |
+| `seguimiento` | Bandeja de despacho e histórico: asignar transporte y tarifa, mover el ticket por el flujo, cancelar un servicio, subir o quitar guías de entrega. No tiene "Padrón y accesos" -ni el botón ni la API se lo permiten-: si se topa con alguien fuera del padrón, se lo reporta a admin. |
 
 Cómo se administran:
 
@@ -339,7 +412,7 @@ Lo que ya está resuelto para eso:
 | `data/` cerrado | Solo se publica lo declarado en `CONFIG.datosPublicos` |
 | Freno de fuerza bruta | 10 intentos fallidos por IP y a esperar 5 minutos |
 | Cabeceras | `nosniff`, `X-Frame-Options`, CSP, sin `X-Powered-By` |
-| Tabla acotada | El histórico pinta 300 filas, no 1 600; el CSV sí las exporta todas |
+| Tabla paginada | El histórico pinta 20 filas por página, no el total; el CSV y el Excel sí exportan todas |
 | Sesiones de verdad | Usuario + clave por persona (ver [Usuarios y roles](#usuarios-y-roles)); la API rechaza sin token lo que antes aceptaba de cualquiera |
 
 **Lo que sigue sin estar, y hay que saberlo antes de repartir el enlace:**

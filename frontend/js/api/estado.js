@@ -1,4 +1,5 @@
 import { obtener, crear, modificar, reemplazar, borrar } from './cliente.js';
+import { sesion } from '../state/sessionState.js';
 
 /**
  * Estado de la aplicación en el navegador.
@@ -34,6 +35,13 @@ export let DB = {
 
 let revisionActual = null;
 
+/**
+ * Trae el estado según quién pregunta: `cliente.js` adjunta el token de
+ * logística si hay uno en la sesión, y el servidor decide con eso -no el
+ * navegador- si manda el historial completo o lo deja vacío (ver
+ * GET /api/estado). Sin sesión de logística, `solicitudes`/`adjuntos` quedan
+ * en `[]` hasta que `cargarMias` los llene con lo que le toca a ESE DNI.
+ */
 export async function cargar() {
   const estado = await obtener('/estado');
   DB = {
@@ -48,6 +56,26 @@ export async function cargar() {
 }
 
 /**
+ * Los servicios (y sus adjuntos) de un DNI puntual: lo único a lo que un
+ * solicitante -que nunca tuvo clave- tiene acceso. Se llama al entrar con el
+ * DNI y de nuevo en cada sondeo, para que "Mis servicios" vea los cambios que
+ * haga logística sin tener que volver a escribirlo.
+ */
+export async function cargarMias(dni) {
+  const r = await obtener('/solicitudes/mias?dni=' + encodeURIComponent(dni));
+  DB.solicitudes = r.solicitudes;
+  DB.adjuntos = r.adjuntos;
+  return DB;
+}
+
+/** Al salir, o si el DNI no correspondía a nada: no dejar en pantalla datos de quien ya se fue. */
+export function limpiarDatosPrivados() {
+  DB.solicitudes = [];
+  DB.adjuntos = [];
+  DB.autorizaciones = [];
+}
+
+/**
  * Revisa si alguien más cambió algo. Con el histórico cargado el estado pesa
  * cientos de KB, así que primero se pregunta el testigo y solo se recarga
  * cuando cambió: sin eso, sondear cada pocos segundos sería descargarlo todo
@@ -58,6 +86,11 @@ export async function sincronizar(onCambio) {
     const { revision } = await obtener('/revision');
     if (revision === revisionActual) return false;
     await cargar();
+    // Para logística, /estado con el token ya trae todo. Para el solicitante,
+    // /estado sin sesión vuelve a dejar `solicitudes`/`adjuntos` en blanco -es
+    // lo correcto para cualquiera que pregunte sin identificarse-, así que hay
+    // que volver a pedir lo suyo aparte.
+    if (sesion && sesion.tipo === 'user') await cargarMias(sesion.dni);
     if (onCambio) onCambio();
     return true;
   } catch (e) {
@@ -104,6 +137,17 @@ export async function actualizarSolicitud(id, cambios) {
 
 export async function avanzarSolicitud(id) {
   const s = await crear('/solicitudes/' + encodeURIComponent(id) + '/avanzar');
+  reemplazarSolicitud(s);
+  return s;
+}
+
+/**
+ * Cancela un ticket. Sin `motivo` (el caso del solicitante cancelando lo
+ * suyo) el servidor pone "Usuario solicitó baja" solo; con sesión de
+ * logística hay que mandar uno de los tres de `#shared/cancelacion.js`.
+ */
+export async function cancelarSolicitud(id, motivo, detalle) {
+  const s = await crear('/solicitudes/' + encodeURIComponent(id) + '/cancelar', motivo ? { motivo, detalle } : undefined);
   reemplazarSolicitud(s);
   return s;
 }

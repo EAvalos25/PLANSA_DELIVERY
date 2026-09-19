@@ -2,11 +2,11 @@ import { $ } from './utils/dom.js';
 import { hoyISO } from './utils/format.js';
 import { toast } from './utils/toast.js';
 import { pedirAutorizacion as apiPedirAutorizacion, ingresarLogistica, salirLogistica,
-         cambiarMiClave, buscarEnPadron } from './api/estado.js';
+         cambiarMiClave, buscarEnPadron, cargar, cargarMias, limpiarDatosPrivados } from './api/estado.js';
 import { setSesion, sesion } from './state/sessionState.js';
 import { normalizarDoc, DOC_VALIDO } from '#shared/documento.js';
 import { tabUser, tabAdmin, aplicarPermisosAdmin } from './views/tabs.js';
-import { toggleOrigen, refrescarHoras, resetAccion } from './views/requestForm.js';
+import { toggleOrigen, refrescarHoras, resetAccion, limpiarParadas } from './views/requestForm.js';
 import { renderMis } from './views/tickets.js';
 import { abrirModal, cerrarModal } from './views/dispatch.js';
 import { cerrarAccesoLogistica } from './ui/logisticaPopover.js';
@@ -49,6 +49,11 @@ export async function entrarSolicitante() {
     return;
   }
   setSesion({ tipo: 'user', dni: p.dni, nombre: p.nombre, cargo: p.cargo, area: p.area });
+  // Los propios servicios se piden aparte: /api/estado, sin sesión de
+  // logística, ya no los trae -son de una sola persona, no de cualquiera que
+  // pregunte-. Si falla (sin red), igual se entra: se ve "Mis servicios"
+  // vacío en vez de trabarse en el ingreso.
+  try { await cargarMias(p.dni); } catch (e) { /* se reintenta en el próximo sondeo */ }
   abrirVista('user');
 }
 
@@ -92,6 +97,11 @@ export async function entrarAdmin() {
     tipo: 'admin', usuario: r.usuario, rol: r.rol, token: r.token,
     nombre: r.usuario, area: r.rol === 'admin' ? 'Administración' : 'Seguimiento'
   });
+  // Recién ahora `sesion.token` existe, así que este `cargar()` -a diferencia
+  // del que hizo main.js al arrancar, antes de cualquier ingreso- sí lleva el
+  // header Authorization, y el servidor responde con bandeja/histórico/KPI
+  // completos en vez de la versión pública y vacía.
+  try { await cargar(); } catch (e) { toast('No se pudo traer la información', e.message, 'bad'); }
   abrirVista('admin');
   // Con clave temporal no se deja trabajar hasta que la cambie por una propia.
   if (r.debeCambiarClave) abrirCambioClave(true);
@@ -101,6 +111,10 @@ export function salir() {
   // Se avisa al servidor para cerrar el token ya mismo; si la llamada falla
   // (sin red, servidor caído) igual se sale localmente, que es lo que importa.
   if (sesion && sesion.tipo === 'admin') salirLogistica().catch(() => {});
+  // La copia local puede tener el historial completo (si salía de logística)
+  // o los servicios de un DNI (si salía un solicitante): en cualquier caso,
+  // no debe quedar a la vista de quien entre después en esta misma PC.
+  limpiarDatosPrivados();
   setSesion(null);
   $('viewUser').classList.remove('on');
   $('viewAdmin').classList.remove('on');
@@ -134,13 +148,18 @@ export function abrirCambioClave(obligatorio = false) {
 export async function guardarCambioClave() {
   const actual = $('claveActual').value || '';
   const nueva = $('claveNueva').value || '';
+  let r;
   try {
-    await cambiarMiClave(actual, nueva);
+    r = await cambiarMiClave(actual, nueva);
   } catch (e) {
     $('eClave').textContent = e.message;
     $('eClave').classList.add('on');
     return;
   }
+  // El servidor cierra todas las sesiones de la cuenta al cambiar la clave
+  // -por si alguna era de un token robado- y emite una nueva para esta misma
+  // pestaña, que si no se adopta se quedaría con un token ya revocado.
+  if (r?.token) setSesion({ ...sesion, token: r.token });
   cerrarModal();
   toast('Clave actualizada', 'Úsala la próxima vez que ingreses.');
 }
@@ -165,6 +184,7 @@ function abrirVista(tipo) {
     $('fOrigen').value = '';
     toggleOrigen();
     resetAccion();
+    limpiarParadas();
     $('resTicket').innerHTML = ''; $('qTicket').value = ''; $('eTicket').classList.remove('on');
     $('fFecha').min = hoyISO();
     if (!$('fFecha').value) $('fFecha').value = hoyISO();

@@ -17,8 +17,8 @@ export function tabUser(k) {
   if (k === 'seguimiento' && $('qTicket').value) consultarTicket();
 }
 
-/** Pestañas reservadas a rol admin: indicadores, payback y gestión de usuarios. */
-const TABS_SOLO_ADMIN = ['kpi', 'payback', 'usuarios'];
+/** Pestañas reservadas a rol admin: indicadores, payback, padrón y usuarios. */
+const TABS_SOLO_ADMIN = ['kpi', 'payback', 'padron', 'usuarios'];
 
 /**
  * Oculta del todo, no solo deshabilita, las pestañas que el rol de la sesión
@@ -29,7 +29,7 @@ const TABS_SOLO_ADMIN = ['kpi', 'payback', 'usuarios'];
 export function aplicarPermisosAdmin() {
   const esAdmin = !sesion || sesion.rol === 'admin';
   $('tabUsuarios').style.display = esAdmin ? '' : 'none';
-  document.querySelectorAll('[data-atab="kpi"], [data-atab="payback"]')
+  document.querySelectorAll('[data-atab="kpi"], [data-atab="payback"], [data-atab="padron"]')
     .forEach(b => { b.style.display = esAdmin ? '' : 'none'; });
 }
 
